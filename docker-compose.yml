@@ -1,0 +1,23 @@
+version: "3.9"
+
+services:
+  poc-agentinvest-app:
+    image: fongmidas/poc-agentinvest-app:v1.0.0
+    restart: unless-stopped
+    volumes:
+      # Mount the credentials file from the host 
+      - ./Midas-Gemini-IAM-Admin.json:/app/Midas-Gemini-IAM-Admin.json:ro
+      # Mount the local Chart.js library
+      - ./vendor/chart.min.js:/app/vendor/chart.min.js:ro
+      # Mount a host directory to persist generated reports
+      - ./generated_reports:/app/generated_reports
+    
+    env_file:
+      - .env
+
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+    network_mode: "host"
