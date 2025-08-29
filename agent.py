@@ -544,24 +544,17 @@ class AgentInvest:
             # wait for 3 seconds
             await asyncio.sleep(3)
             
-        #generated_contents = []
-    #    section_generation_tasks = [
-    #        self.generate_section(section, company_name, context)
-    #        for section in report_structure
-    #    ]
-    #    generated_contents = await asyncio.gather(*section_generation_tasks)
-    #    generated_contents = []
-        
-        # Create sections with anchor IDs for clickable TOC
+
+
         report_sections_content = []
         for i, section_title in enumerate(report_structure):
-            # Create matching anchor ID for clickable TOC
+          
             section_clean = section_title.strip()
             anchor = section_clean.lower().replace('.', '').replace(' ', '-').replace('(', '').replace(')', '').replace('&', 'and')
             import re
             anchor = re.sub(r'^\d+\.?\s*', '', anchor)
             
-            # Add section with HTML anchor for clickable TOC (invisible anchor before section)
+            # Add section with HTML anchor
             report_sections_content.append(f'<a id="{anchor}"></a>\n\n## {section_title}\n\n{generated_contents[i]}')
         
         raw_report = "\n\n".join(report_sections_content)
