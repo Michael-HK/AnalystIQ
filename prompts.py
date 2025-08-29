@@ -173,6 +173,7 @@ Before generating any content, you MUST first reflect on and analyze the specifi
 - **STRICTLY NOTE THIS**: ALWAYS prioritize the use of charts (for numerical data with 3+ data points) and tables (for structured data) to enhance the analysis and readability of the section EXCEPT when the section is purely narrative or analytical.
 - **ABSOLUTE PROHIBITION**: NEVER create charts with only 1 or 2 data points. If you only have 1-2 data points, use text emphasis, bullet points, or tables instead.
 - ALL charts visualization code must be self-contained HTML using Chart.js loaded from a CDN, wrapped in a ```html ... ``` block. They must be responsive, with a max-width of 560px.
+- DO NOT generate an empty chart.
 
 **Temporal Consistency (HIGHEST PRIORITY):**
 - Maintain strict temporal consistency with today's date ({current_date}).
@@ -214,7 +215,7 @@ Before generating any content, you MUST first reflect on and analyze the specifi
 - **No Redundancy Rule**: When a chart is generated, you MUST NOT include the same data in markdown tables, lists, or text arrays elsewhere in the response.
 
 **Chart Technical Specifications:**
-- All charts must be self-contained HTML using Chart.js loaded from CDN, wrapped in ```html ... ``` blocks
+- All charts MUST be self-contained HTML using Chart.js loaded from CDN, wrapped in ```html ... ``` blocks
 - **Fixed dimensions**: Container must be exactly 760px wide by 560px tall with 20px padding
 - **Canvas size**: Canvas element must have explicit width="720" height="520" attributes
 - **Non-responsive**: Set responsive: false and maintainAspectRatio: false in Chart.js options
@@ -225,7 +226,8 @@ Before generating any content, you MUST first reflect on and analyze the specifi
 - All text elements must have explicit font sizing for consistent rendering
 - **STRICTLY NOTE THIS**: ALWAYS prioritize the use of charts (for numerical data more than 2 data points) and tables (for structured data) to enhance the analysis and readability of the section EXCEPT when the section is purely narrative or analytical.
 - STRICTLY NOTE THIS: ALWAYS prioritize other type of visualizations (e.g. area charts, pie charts, donut charts, etc.) when they are more appropriate before use consider bar charts.
--NOTE: Use bar charts when it is appropriate to compare multiple items.
+- NOTE: Use bar charts when it is appropriate to compare multiple items.
+- DO NOT generate an empty chart.
 
 **Mandatory Chart Analysis (When Charts Are Used):**
 Every chart MUST be immediately followed by a detailed analytical paragraph explaining key insights, trends, implications, and strategic significance revealed by the visualization. This analysis should demonstrate sophisticated financial interpretation.
@@ -341,6 +343,7 @@ The content should be maximum of 500 words.
 
 STRICTLY REMEMBER: ALWAYS prioritize the use of charts (for numerical data more than 2 data points) and tables (for structured data) to enhance the analysis and readability of the section EXCEPT when the section is purely narrative or analytical.
 ALL charts visualization code must be self-contained HTML using Chart.js loaded from a CDN, wrapped in a ```html ... ``` block.
+STRICTLY NOTE THIS: DO NOT generate an empty chart.
 STRICTLY NOTE THIS: ALWAYS prioritize the use of charts (for numerical data more than 2 data points) and tables (for structured data) to enhance the analysis and readability of the section EXCEPT when the section is purely narrative or analytical.
 ANY chart you generate MUST be innovative and creative.
 ANY chart you generate MUST have at least 3 data points.
