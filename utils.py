@@ -131,35 +131,195 @@ def convert_report_to_pdf(
           <meta charset="UTF-8"><title>Report</title>
           <base href=".">
           <style>
-            body {{ font-family: sans-serif; line-height: 1.6; max-width: 8.5in; margin: 0 auto; padding: 0.5in; }}
-            h1, h2, h3 {{ border-bottom: 2px solid #e1e4e8; padding-bottom: 10px; page-break-after: avoid; }}
-            table {{ width: 100%; border-collapse: collapse; page-break-inside: avoid; }}
-            th, td {{ border: 1px solid #dfe2e5; padding: 10px; }}
-            th {{ background-color: #f6f8fa; }}
-            img {{ max-width: 100%; height: auto; }}
-            ul, ol {{ margin: 1em 0; padding-left: 2em; }}
-            li {{ margin: 0.5em 0; }}
+            /* Reset default margins and padding */
+            * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+            
+            body {{ 
+              font-family: 'Georgia', 'Times New Roman', serif; 
+              line-height: 1.4; 
+              color: #333;
+              margin: 0;
+              padding: 0;
+              font-size: 11pt;
+            }}
+            
+            /* Paragraph spacing optimization */
+            p {{ 
+              margin: 0.4em 0; 
+              text-align: justify;
+              orphans: 3;
+              widows: 3;
+            }}
+            
+            /* Header styling with reduced spacing */
+            h1 {{ 
+              font-size: 18pt; 
+              font-weight: bold; 
+              margin: 0.8em 0 0.4em 0; 
+              border-bottom: 2px solid #2c3e50; 
+              padding-bottom: 8px;
+              page-break-after: avoid;
+              color: #2c3e50;
+            }}
+            
+            h2 {{ 
+              font-size: 14pt; 
+              font-weight: bold; 
+              margin: 0.6em 0 0.3em 0; 
+              border-bottom: 1px solid #34495e; 
+              padding-bottom: 6px;
+              page-break-after: avoid;
+              color: #34495e;
+            }}
+            
+            h3 {{ 
+              font-size: 12pt; 
+              font-weight: bold; 
+              margin: 0.5em 0 0.2em 0;
+              page-break-after: avoid;
+              color: #34495e;
+            }}
+            
+            /* Table styling with tighter spacing */
+            table {{ 
+              width: 100%; 
+              border-collapse: collapse; 
+              margin: 0.5em 0;
+              page-break-inside: avoid;
+              font-size: 10pt;
+            }}
+            
+            th, td {{ 
+              border: 1px solid #bdc3c7; 
+              padding: 6px 8px;
+              text-align: left;
+              vertical-align: top;
+            }}
+            
+            th {{ 
+              background-color: #ecf0f1; 
+              font-weight: bold;
+              color: #2c3e50;
+            }}
+            
+            /* List styling with reduced spacing */
+            ul, ol {{ 
+              margin: 0.3em 0 0.3em 1.5em; 
+              padding: 0;
+            }}
+            
+            li {{ 
+              margin: 0.2em 0;
+              line-height: 1.3;
+            }}
+            
+            /* Image styling */
+            img {{ 
+              max-width: 100%; 
+              height: auto; 
+              margin: 0.5em 0;
+              display: block;
+            }}
+            
+            /* Strong/Bold text */
+            strong, b {{ 
+              font-weight: bold; 
+              color: #2c3e50;
+            }}
+            
+            /* Emphasis/Italic text */
+            em, i {{ 
+              font-style: italic; 
+            }}
+            
+            /* Code blocks */
+            code {{ 
+              background-color: #f8f9fa; 
+              padding: 2px 4px; 
+              border-radius: 3px;
+              font-family: 'Courier New', monospace;
+              font-size: 9pt;
+            }}
+            
+            /* Horizontal rules */
+            hr {{ 
+              border: none; 
+              border-top: 1px solid #bdc3c7; 
+              margin: 0.5em 0;
+            }}
+            
+            /* Blockquotes */
+            blockquote {{ 
+              margin: 0.5em 0; 
+              padding: 0.3em 0.8em; 
+              border-left: 3px solid #3498db; 
+              background-color: #f8f9fa;
+              font-style: italic;
+            }}
+            
+            /* Page break utilities */
+            .page-break {{ page-break-before: always; }}
+            .no-break {{ page-break-inside: avoid; }}
+            
+            /* Anchor styling */
+            a {{ color: #3498db; text-decoration: none; }}
+            a:hover {{ text-decoration: underline; }}
           </style>
         </head>
         <body>{body_html}</body>
         </html>
         """
 
-        # 4. Generate the PDF with built-in TOC
+        # 4. Generate the PDF with optimized spacing
         options = {
+            # Page setup
             'page-size': 'A4',
-            'margin-top': '0.75in', 'margin-right': '0.75in',
-            'margin-bottom': '0.75in', 'margin-left': '0.75in',
-            'encoding': "UTF-8",
-        #    'enable-local-file-access': None,
-        #    'outline': None,                 # Enable PDF bookmarks/outline for navigation
-            'outline-depth': '3',           # Include up to H3 in outline
-            'print-media-type': None,       # Use print CSS media type
+            'orientation': 'Portrait',
+            'encoding': 'UTF-8',
+            
+            # Optimized margins to reduce white space
+            'margin-top': '0.6in',      # Reduced from 0.75in
+            'margin-right': '0.6in',    # Reduced from 0.75in  
+            'margin-bottom': '0.6in',   # Reduced from 0.75in
+            'margin-left': '0.6in',     # Reduced from 0.75in
+            
+            # Header settings with reduced spacing
             'header-left': f'{company_name} - Investment Analysis',
-            'header-font-size': '9', 'header-spacing': '5',
+            'header-font-size': '8',    # Reduced from 9
+            'header-spacing': '3',      # Reduced from 5
+            'header-font-name': 'Arial',
+            
+            # Footer settings with reduced spacing
             'footer-left': f'Generated by AgentInvest on {datetime.now().strftime("%Y-%m-%d")}',
             'footer-right': 'Page [page] of [topage]',
-            'footer-font-size': '9', 'footer-spacing': '5',
+            'footer-font-size': '8',    # Reduced from 9
+            'footer-spacing': '3',      # Reduced from 5
+            'footer-font-name': 'Arial',
+            
+            # Print optimization
+            'print-media-type': None,
+            'no-pdf-compression': None,
+            'dpi': 300,                 # High DPI for better quality
+            
+            # Layout optimization
+            'disable-smart-shrinking': None,  # Prevent automatic shrinking
+            'zoom': 1.0,               # No zoom scaling
+            'viewport-size': '1280x1024',
+            
+            # Content optimization
+            'minimum-font-size': 8,     # Prevent fonts from being too small
+            'image-quality': 95,        # High image quality
+            'image-dpi': 300,          # High DPI for images
+            
+            # PDF structure
+            'outline': None,            # Enable PDF bookmarks
+            'outline-depth': 3,         # Include up to H3 in outline
+            'title': f'Investment Report - {company_name}',
+            
+            # Performance optimization
+            'lowquality': False,        # High quality output
+            'enable-local-file-access': None,
+            'keep-relative-links': None,
         }
         
         pdfkit.from_string(html_doc, output_filename, options=options)

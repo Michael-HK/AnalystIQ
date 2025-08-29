@@ -168,6 +168,24 @@ Before generating any content, you MUST first reflect on and analyze the specifi
   - **Bullet Points**: For key insights, advantages, risks, or summary points (use • or -)
   - **Tables**: For structured comparative data, financial metrics, or categorized information
   - **Charts**: For numerical data that benefits from visual representation
+
+**CRITICAL: Bullet Point Formatting Rules**
+When using bullet points, you MUST follow proper spacing to ensure readability:
+
+**CORRECT FORMAT (Always use this):**
+- **First Key Point**: Detailed explanation with comprehensive analysis and context.
+
+- **Second Key Point**: Detailed explanation with comprehensive analysis and context.
+
+- **Third Key Point**: Detailed explanation with comprehensive analysis and context.
+
+**INCORRECT FORMAT (Never use this - causes clustering):**
+- First point without spacing
+- Second point clustered together
+- Third point also clustered
+
+**MANDATORY**: Each bullet point must be separated by a blank line and include substantive explanation, not just brief statements.
+
 - **Word Limit**: Each section should be between 400-500 words of text content (excluding charts, which are additional). This ensures substantial analysis while maintaining readability.
 - **Strict Citation Discipline**: Every factual claim, number, or statement must be followed by its numbered citation, like `[1]`, `[2]`. Use the EXACT source numbers as provided. Never modify or renumber sources.
 - **STRICTLY NOTE THIS**: ALWAYS prioritize the use of charts (for numerical data with 3+ data points) and tables (for structured data) to enhance the analysis and readability of the section EXCEPT when the section is purely narrative or analytical.
@@ -435,13 +453,29 @@ Use markdown tables when:
 - Showing categorized information that doesn't warrant visualization
 - Data contains both text and numbers that need organized presentation
 
-**Bullet Points for Key Insights:**
-Use bullet points to highlight:
-- Key competitive advantages or disadvantages
-- Major risks or opportunities
-- Critical financial metrics or ratios
-- Strategic initiatives or developments
-- Market positioning factors
+**Bullet Points for Key Insights (CRITICAL FORMATTING):**
+When using bullet points, you MUST follow proper spacing rules:
+
+**CORRECT FORMAT (Always use this):**
+- **First Key Point**: Detailed explanation of the first point with sufficient context and analysis.
+
+- **Second Key Point**: Detailed explanation of the second point with sufficient context and analysis.
+
+- **Third Key Point**: Detailed explanation of the third point with sufficient context and analysis.
+
+**INCORRECT FORMAT (Never use this):**
+- First point without spacing
+- Second point clustered together  
+- Third point also clustered
+
+**Bullet Point Content Guidelines:**
+- Key competitive advantages or disadvantages with detailed explanations
+- Major risks or opportunities with specific impact analysis
+- Critical financial metrics or ratios with context and implications
+- Strategic initiatives or developments with timeline and expected outcomes
+- Market positioning factors with comparative analysis
+
+**MANDATORY**: Each bullet point must be separated by a blank line and include substantive explanation, not just brief statements.
 
 **Example Chart Variety by Section Type:**
 - **Financial Performance**: Line charts for trends, stacked bars for segment breakdown
@@ -626,12 +660,33 @@ Based on the complete report content provided, you must create an executive summ
 - **Primary Risks**: 2-3 most significant concerns
 - **Outlook**: Forward-looking perspective with key milestones
 
+**CRITICAL: Bullet Point Formatting Rules**
+When using bullet points in the executive summary, you MUST follow proper spacing:
+
+**CORRECT FORMAT for Key Investment Highlights:**
+- **Strong Capital Base**: Detailed explanation of financial strength with specific metrics and implications.
+
+- **Revenue Diversification**: Comprehensive analysis of revenue streams and growth drivers with supporting data.
+
+- **Digital Transformation**: In-depth assessment of technology initiatives and their impact on business performance.
+
+**CORRECT FORMAT for Primary Risks:**
+- **Market Exposure Risk**: Detailed explanation of the risk with specific impact analysis and probability assessment.
+
+- **Regulatory Challenges**: Comprehensive analysis of regulatory pressures and their potential business impact.
+
+**INCORRECT FORMAT (Never use this - causes clustering):**
+- Risk point without spacing
+- Another risk clustered together
+- Third risk also clustered
+
 **Requirements:**
 - Length: 200-300 words
 - Professional, executive-level tone
 - No citations needed (this synthesizes the full report)
 - Focus on actionable insights for investment decision-making
 - Include specific financial metrics where relevant
+- **MANDATORY**: Each bullet point must be separated by a blank line and include substantive explanation
 
 **Important**: This executive summary will be placed on a separate page BEFORE the table of contents, so it should stand alone as a complete investment overview.
 """)
