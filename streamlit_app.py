@@ -81,7 +81,6 @@ def main():
     query_cols = st.columns(2)
     web_queries_area = query_cols[0]
     financial_queries_area = query_cols[1]
-    # Use st.empty() for the progress area to allow dynamic updates.
     progress_area = st.empty()
     
     if st.sidebar.button("Generate Report", disabled=st.session_state.is_running):
@@ -153,24 +152,20 @@ def main():
             finally:
                 st.session_state.is_running = False
 
-        # One final update to ensure the last step is marked as complete
+
         with progress_area.container():
             st.subheader("Agent Progress")
             for log in st.session_state.progress_log:
-                st.info(f"✅ {log}") # Mark all as complete
-        
-        # This will run regardless of success or failure after the agent is done.
+                st.info(f"✅ {log}") 
+
         if st.session_state.report_generated:
-            # Final success message at the top level
             st.success("Report generation complete!")
         else:
             st.error("Report generation failed. Please review the progress log.")
         
-        # Rerun to update the button state and show final progress
         st.rerun()
 
-    # --- Display Initial Message or Maintain Final Progress ---
-    # Show initial message only if nothing has started and no progress exists
+
     if not st.session_state.is_running and not st.session_state.progress_log:
         progress_area.info("Select a stock ticker from the sidebar and click 'Generate Report' to begin.")
     elif not st.session_state.is_running and st.session_state.progress_log:
@@ -178,7 +173,7 @@ def main():
         with progress_area.container():
             st.subheader("Agent Progress")
             for log in st.session_state.progress_log:
-                st.info(f"✅ {log}") # All marked as complete
+                st.info(f"✅ {log}") 
 
     # Show download section prominently after completion
     if st.session_state.report_generated and not st.session_state.is_running:
@@ -190,7 +185,7 @@ def main():
         with col2:
             st.subheader("📄 Download Your Investment Report")
             if os.path.exists(st.session_state.pdf_path):
-                # Create a more prominent download button
+                # Creating download button
                 st.markdown(f"""
                 <div style="text-align: center; padding: 20px; background-color: #f0f2f6; border-radius: 10px; margin: 10px 0;">
                     <h4 style="color: #1f77b4;">Your Investment Report is Ready!</h4>

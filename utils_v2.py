@@ -29,9 +29,9 @@ class ProgressCallback(Protocol):
     def __call__(self, update: Any) -> None: ...
 
 
-# =========================
-# Authoring/Build Helpers
-# =========================
+# ==========================================
+# +++++++++Authoring/Build Helpers++++++++++
+# ==========================================
 
 def extract_live_chart_blocks(md: str) -> str:
     """

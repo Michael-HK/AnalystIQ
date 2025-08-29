@@ -10,7 +10,7 @@ from llama_index.core.agent.workflow import ReActAgent
 from prompts import FINANCIAL_AGENT_SYSTEM_PROMPT
 from google.oauth2 import service_account
 from gemini_vertex import VertexAI
-
+from llama_index.llms.openrouter import OpenRouter
 
 credentials = service_account.Credentials.from_service_account_file(
     'Midas-Gemini-IAM-Admin.json'
@@ -147,7 +147,7 @@ class FinancialAgent:
     """
     An agent that uses FinancialToolSpec to answer financial questions.
     """
-    def __init__(self, llm: VertexAI, verbose: bool = False):
+    def __init__(self, llm: OpenRouter, verbose: bool = False):
 
 
         self.agent = ReActAgent(

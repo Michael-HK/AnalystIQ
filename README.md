@@ -3,17 +3,18 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**AgentInvest** is an AI-powered investment analysis platform that automatically generates comprehensive financial reports for stock analysis. This Proof of Concept (PoC) demonstrates the integration of advanced AI models, web scraping, financial data APIs, and automated report generation to create professional-grade investment research documents.
+**AgentInvest** is an AI-powered investment analysis platform that automatically generates comprehensive financial reports for stock analysis. This Proof of Concept (PoC) demonstrates the integration of advanced AI models via OpenRouter, web scraping, financial data APIs, and automated report generation to create professional-grade investment research documents.
 
 ## 🚀 Key Features
 
 - **Automated Investment Research**: Generates comprehensive 6-10 page investment reports with minimal user input
 - **Multi-Source Data Integration**: Combines real-time web search, financial APIs, and market data
-- **AI-Powered Analysis**: Leverages Google's Gemini models for intelligent content generation and analysis
+- **AI-Powered Analysis**: Leverages multiple LLM models via OpenRouter for intelligent content generation and analysis
 - **Professional Report Generation**: Produces publication-ready PDF reports with charts, tables, and citations
 - **Interactive Web Interface**: User-friendly Streamlit application for easy report generation
 - **Caching System**: Redis-based caching for improved performance and reduced API calls
 - **Containerized Deployment**: Docker support for easy deployment and scalability
+- **Model Flexibility**: Access to multiple LLM providers through a single OpenRouter API
 
 ## 📊 Report Structure
 
@@ -49,7 +50,7 @@ Each generated report follows a professional investment analysis structure:
 ### Core Technologies
 - **Python 3.10+** - Primary programming language
 - **Streamlit** - Web application framework
-- **Google Gemini** - AI language models (2.0-flash, 2.5-flash)
+- **OpenRouter** - Unified API for accessing multiple LLM models (Gemini, GPT, Claude, etc.)
 - **LlamaIndex** - AI agent framework and tools
 
 ### Data Sources
@@ -68,10 +69,36 @@ Each generated report follows a professional investment analysis structure:
 - **Docker** - Containerization and deployment
 - **Docker Compose** - Multi-service orchestration
 
+## 🎯 Why OpenRouter?
+
+AgentInvest uses **OpenRouter** as the LLM provider, offering several advantages:
+
+### 🔄 **Model Flexibility**
+- **Multi-Provider Access**: Single API for Gemini, GPT, Claude, Llama, and 100+ other models
+- **Easy Model Switching**: Change models without code modifications
+- **Cost Optimization**: Compare pricing across different providers
+- **Performance Testing**: Benchmark different models for your use case
+
+### 💡 **Key Benefits**
+- **No Vendor Lock-in**: Switch between OpenAI, Google, Anthropic, Meta, and others
+- **Unified API**: Consistent interface regardless of the underlying model
+- **Competitive Pricing**: Often better rates than direct provider APIs
+- **Reliability**: Automatic failover between providers
+- **Usage Analytics**: Detailed usage tracking and cost monitoring
+
+### 🚀 **Supported Models**
+```python
+# Examples of models you can use:
+"google/gemini-2.0-flash-001"      # Fast, cost-effective
+"openai/gpt-4o"                    # High-quality reasoning  
+"anthropic/claude-3.5-sonnet"      # Excellent for analysis
+"meta-llama/llama-3.1-70b-instruct" # Open-source alternative
+```
+
 ## 📋 Prerequisites
 
 ### Required API Keys
-- **Google Cloud Platform** - For Gemini AI models access
+- **OpenRouter** - For accessing various LLM models (supports Gemini, GPT, Claude, and more)
 - **Tavily API** - For web search capabilities
 
 ### System Requirements
@@ -92,13 +119,13 @@ Each generated report follows a professional investment analysis structure:
 
 2. **Set up environment variables**
    ```bash
-   cp .env.example .env
-   # Edit .env with your API keys
+   cp env.example .env
+   # Edit .env with your actual API keys
    ```
 
-3. **Configure Google Cloud credentials**
-   - Place your `Midas-Gemini-IAM-Admin.json` service account file in the project root
-   - Ensure the service account has Vertex AI access
+3. **Configure API credentials**
+   - Obtain an OpenRouter API key from [openrouter.ai](https://openrouter.ai)
+   - Add your API keys to the `.env` file
 
 4. **Launch with Docker Compose**
    ```bash
@@ -128,7 +155,7 @@ Each generated report follows a professional investment analysis structure:
 3. **Set up environment variables**
    ```bash
    export TAVILY_API_KEY="your-tavily-api-key"
-   export GOOGLE_APPLICATION_CREDENTIALS="./Midas-Gemini-IAM-Admin.json"
+   export OPENROUTER_API_KEY="your-openrouter-api-key"
    ```
 
 4. **Run the Streamlit application**
@@ -142,8 +169,8 @@ Each generated report follows a professional investment analysis structure:
 
 | Variable | Description | Required |
 |----------|-------------|----------|
+| `OPENROUTER_API_KEY` | API key for OpenRouter LLM access | Yes |
 | `TAVILY_API_KEY` | API key for Tavily web search | Yes |
-| `GOOGLE_APPLICATION_CREDENTIALS` | Path to Google Cloud service account JSON | Yes |
 | `CHARTJS_SRC` | Chart.js library source URL | No (defaults to CDN) |
 | `REDIS_URL` | Redis connection URL for caching | No (defaults to localhost) |
 
@@ -193,12 +220,20 @@ Modify the prompts in `prompts.py` to customize report sections and analysis dep
 ### AI Model Configuration
 Adjust model parameters in `agent.py`:
 ```python
-self.llm = VertexAI(
-    model="gemini-2.0-flash",
+self.llm = OpenRouter(
+    model="google/gemini-2.0-flash-001",  # or any other supported model
+    api_key=os.getenv("OPENROUTER_API_KEY"),
     temperature=1,
     max_tokens=8000
 )
 ```
+
+### Supported Models via OpenRouter
+- **Google**: `google/gemini-2.0-flash-001`, `google/gemini-2.5-flash`
+- **OpenAI**: `openai/gpt-4o`, `openai/gpt-4o-mini`
+- **Anthropic**: `anthropic/claude-3.5-sonnet`, `anthropic/claude-3-haiku`
+- **Meta**: `meta-llama/llama-3.1-70b-instruct`
+- **And many more available through OpenRouter**
 
 ### Caching Configuration
 Configure Redis caching in `cache_manager.py`:
@@ -217,7 +252,7 @@ PoC_AgentInvest/
 ├── utils.py                 # PDF generation utilities
 ├── utils_v2.py             # Enhanced PDF utilities
 ├── cache_manager.py         # Redis caching layer
-├── gemini_vertex.py         # Vertex AI integration
+├── gemini_vertex.py         # Legacy Vertex AI integration (deprecated)
 ├── plot_utils.py           # Chart generation utilities
 ├── tickers.py              # Supported stock tickers
 ├── requirements.txt         # Python dependencies
@@ -319,7 +354,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-- **Google Cloud Platform** for Vertex AI and Gemini models
+- **OpenRouter** for providing unified access to multiple LLM models
 - **Tavily** for web search API services
 - **Yahoo Finance** for financial data access
 - **Streamlit** for the web application framework
