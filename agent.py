@@ -17,6 +17,7 @@ from prompts import (
     GENERATE_WEB_QUERIES_PROMPT,
     GENERATE_FINANCIAL_QUERIES_PROMPT,
     GENERATE_OPENING_SECTION_PROMPT,
+    GENERATE_EXECUTIVE_SUMMARY_PROMPT,
     CONTENT_GENERATION_SYSTEM_PROMPT_v2,
     CONTENT_GENERATION_USER_PROMPT,
     POLISH_REPORT_SYSTEM_PROMPT,
@@ -29,14 +30,9 @@ from utils import convert_report_to_pdf, ProgressCallback
 from utils_v2 import convert_report_to_pdf_v2
 from cache_manager import RedisCacheManager
 
-from google.oauth2 import service_account
-from gemini_vertex import VertexAI
 from llama_index.core.llms import ChatMessage, MessageRole
+from llama_index.llms.openrouter import OpenRouter
 
-
-credentials = service_account.Credentials.from_service_account_file(
-    'Midas-Gemini-IAM-Admin.json'
-)
 
 load_dotenv()
 
@@ -44,25 +40,23 @@ class AgentInvest:
     def __init__(self, verbose_agent: bool = False):
         self.current_date = datetime.now().strftime("%Y-%m-%d")
 
-        self.llm = VertexAI(
-            project=credentials.project_id,
-            location="us-central1",
-            model="gemini-2.0-flash",
-            credentials=credentials,
+
+        self.llm = OpenRouter(
+            model="google/gemini-2.0-flash-001",
+            api_key=os.getenv("OPENROUTER_API_KEY"),
             context_window=100000,
             temperature=1,
             max_tokens=8000
         )
 
-        self.llm2 = VertexAI(
-            project=credentials.project_id,
-            location="us-central1",
-            model="gemini-2.5-flash",
-            credentials=credentials,
+        self.llm2 = OpenRouter(
+            model="google/gemini-2.5-flash",
+            api_key=os.getenv("OPENROUTER_API_KEY"),
             context_window=100000,
             temperature=1,
-             max_tokens=8000
+            max_tokens=8000
         )
+
         self.financial_tools = FinancialToolSpec()
         self.web_search_tool = WebSearchTool()
         self.financial_agent = FinancialAgent(llm=self.llm, verbose=verbose_agent)
@@ -145,7 +139,7 @@ class AgentInvest:
     def _format_context(self, web_results: List[Dict], financial_results: List[Any], financial_queries: List[Dict]) -> str:
         formatted_context = ""
         source_idx = 1
-        seen_titles = set()  # Track seen titles to avoid duplicates
+        seen_titles = set()  
         
         # Clear source map at the beginning to ensure clean state
         self.source_map.clear()
@@ -383,6 +377,7 @@ class AgentInvest:
     def _generate_title_page(self, company_name: str) -> str:
         """
         Generate a professional title page for the investment report.
+        NOTE: This method is deprecated - using LLM-generated opening section as title page instead.
         """
         title_page = f"""# Investment Report for {company_name}
 
@@ -399,7 +394,7 @@ class AgentInvest:
     def _generate_table_of_contents(self, report_structure: List[str]) -> str:
         """
         Generate a well-formatted table of contents based on the report structure.
-        Uses PDF bookmarks for navigation instead of problematic HTML links.
+        Executive Summary is excluded at the structure generation level.
         """
         toc_content = "## Table of Contents\n\n"
         
@@ -410,7 +405,8 @@ class AgentInvest:
         
         # Add References section to TOC
         toc_content += "- References\n\n"
-        # Add both HTML page break and markdown page break for better compatibility
+        
+        # Add page break after TOC to start main report on fresh page
         toc_content += "\n<div style='page-break-after: always;'></div>\n\n"
         toc_content += "---\n\n"  # Additional separator for better visual break
         
@@ -420,7 +416,7 @@ class AgentInvest:
     async def generate_opening_section(self, company_name: str, ticker: str, context: str) -> str:
         """
         Generate the opening section with company info, thesis, and recommended steps using LLM.
-        This creates a data-driven opening based on the retrieved context.
+        This creates a data-driven opening based on the retrieved context and serves as the title page.
         """
         prompt = GENERATE_OPENING_SECTION_PROMPT.format(
             company_name=company_name,
@@ -432,7 +428,50 @@ class AgentInvest:
         full_prompt = f"{prompt}\n\nAvailable Research Context (Cite using [1], [2], etc.):\n---\n{context}\n---\n\nONLY output the content for the opening section, no other text or explanation. Generate the opening section now:"
         
         response = await self.llm.acomplete(full_prompt)
-        return response.text
+        
+        # Add the company/date info after the title
+        opening_content = response.text.strip()
+        
+        # Find the first line (title) and add the company info after it
+        lines = opening_content.split('\n')
+        if lines:
+            # Insert the company info after the first line (title)
+            title_line = lines[0]
+            rest_content = '\n'.join(lines[1:]) if len(lines) > 1 else ""
+            
+            company_info = f"\n\n**Prepared by AgentInvest**  \n**Date: {self.current_date}**\n"
+            
+            # Add page break after opening section
+            page_break = "\n\n<div style='page-break-after: always;'></div>\n\n---\n"
+            
+            return title_line + company_info + rest_content + page_break
+        else:
+            # Fallback if no content
+            company_info = f"\n\n**Prepared by AgentInvest**  \n**Date: {self.current_date}**\n"
+            page_break = "\n\n<div style='page-break-after: always;'></div>\n\n---\n"
+            return opening_content + company_info + page_break
+
+    @retry(wait=wait_exponential(multiplier=1, min=2, max=60), stop=stop_after_attempt(3))
+    async def generate_executive_summary(self, company_name: str, ticker: str, raw_report: str) -> str:
+        """
+        Generate a comprehensive executive summary based on the complete report content.
+        This will be placed on a separate page after the opening section.
+        """
+        prompt = GENERATE_EXECUTIVE_SUMMARY_PROMPT.format(
+            company_name=company_name,
+            ticker=ticker,
+            current_date=self.current_date
+        )
+        
+        # Add the complete report content for analysis
+        full_prompt = f"{prompt}\n\nComplete Report Content for Analysis:\n---\n{raw_report}\n---\n\nONLY output the content for the executive summary, no other text or explanation. Generate the executive summary now:"
+        
+        response = await self.llm.acomplete(full_prompt)
+        
+        # Add page break after executive summary
+        executive_summary = f"## Executive Summary\n\n{response.text.strip()}\n\n<div style='page-break-after: always;'></div>\n\n---\n"
+        
+        return executive_summary
 
     async def run(self, ticker: str, progress_callback: Optional[ProgressCallback] = None):
         
@@ -452,11 +491,11 @@ class AgentInvest:
             company_name = cached_data['company_name']
             report_structure = cached_data['structure']
             context = cached_data['context']
-            update_progress(f"🏢 Using cached company name", company_name)
+            update_progress("🏢 Using cached company name", company_name)
         else:
             # 1. Get company name
             company_name = self.financial_tools.get_company_name(ticker)
-            update_progress(f"🏢 Identified company", company_name)
+            update_progress("🏢 Identified company", company_name)
 
             # 2. Generate report structure
             update_progress("🏗️ Generating report structure...")
@@ -532,20 +571,27 @@ class AgentInvest:
     #    update_progress("✨ Polishing final report for readability and flow...")
     #    polished_report = await self.polish_report(raw_report, company_name)
 
-        # 10. Generate title page, opening section, and table of contents
-        update_progress("📋 Generating title page and table of contents...")
-        title_page = self._generate_title_page(company_name)
+        # 10. Generate opening section (serves as title page)
+        update_progress("📋 Generating opening section as title page...")
         opening_section = await self.generate_opening_section(company_name, ticker, context)
+
+        # 11. Generate executive summary (separate page)
+        update_progress("📝 Generating executive summary...")
+        executive_summary = await self.generate_executive_summary(company_name, ticker, raw_report)
+
+        # 12. Generate table of contents (separate page, excludes executive summary)
+        update_progress("📋 Generating table of contents...")
         table_of_contents = self._generate_table_of_contents(report_structure)
 
-        # 11. Generate references
+        # 13. Generate references
         update_progress("📚 Generating references section...")
         cited_numbers = self._extract_cited_numbers(raw_report)
         print(f"DEBUG: Found {len(cited_numbers)} cited numbers: {cited_numbers}")
         print(f"DEBUG: Source map has {len(self.source_map)} entries: {list(self.source_map.keys())}")
         references_section = self._generate_references_section(cited_numbers)
 
-        final_report = title_page + "\n\n" + opening_section + "\n\n" + table_of_contents + "\n\n" + raw_report + "\n\n" + references_section
+        # New structure: Opening (title) -> Executive Summary -> TOC -> Main Report -> References
+        final_report = opening_section + "\n\n" + executive_summary + "\n\n" + table_of_contents + "\n\n" + raw_report + "\n\n" + references_section
 
         update_progress("🏁 Final report assembly complete.")
         
@@ -583,7 +629,7 @@ class AgentInvest:
         # Convert to PDF in the mounted volume (ensure overwrite)
         update_progress("📄 Converting report to PDF...")
         output_pdf_filename = os.path.join(reports_dir, f"{ticker}_AgentInvest_Report.pdf")
-        
+
         # Explicitly remove existing PDF file if it exists
         if os.path.exists(output_pdf_filename):
             try:
@@ -633,11 +679,11 @@ class AgentInvest:
             company_name = cached_data['company_name']
             report_structure = cached_data['structure']
             context = cached_data['context']
-            update_progress(f"🏢 Using cached company name", company_name)
+            update_progress("🏢 Using cached company name", company_name)
         else:
             # 1. Get company name
             company_name = self.financial_tools.get_company_name(ticker)
-            update_progress(f"🏢 Identified company", company_name)
+            update_progress("🏢 Identified company", company_name)
 
             # 2. Generate report structure
             update_progress("🏗️ Generating comprehensive report structure...")
@@ -715,20 +761,27 @@ class AgentInvest:
         raw_report = "\n\n".join(report_sections_content)
         update_progress("📑 All enhanced report sections generated.")
 
-        # 9. Generate title page, opening section, and table of contents
-        update_progress("📋 Generating professional title page, key opening section, and table of contents...")
-        title_page = self._generate_title_page(company_name)
+        # 9. Generate opening section (serves as title page)
+        update_progress("📋 Generating professional opening section as title page...")
         opening_section = await self.generate_opening_section(company_name, ticker, context)
+
+        # 10. Generate executive summary (separate page)
+        update_progress("📝 Generating comprehensive executive summary...")
+        executive_summary = await self.generate_executive_summary(company_name, ticker, raw_report)
+
+        # 11. Generate table of contents (separate page, excludes executive summary)
+        update_progress("📋 Generating table of contents...")
         table_of_contents = self._generate_table_of_contents(report_structure)
 
-        # 10. Generate references
+        # 12. Generate references
         update_progress("📚 Generating comprehensive references section...")
         cited_numbers = self._extract_cited_numbers(raw_report)
         print(f"DEBUG: Found {len(cited_numbers)} cited numbers: {cited_numbers}")
         print(f"DEBUG: Source map has {len(self.source_map)} entries: {list(self.source_map.keys())}")
         references_section = self._generate_references_section(cited_numbers)
 
-        final_report = title_page + "\n\n" + opening_section + "\n\n" + table_of_contents + "\n\n" + raw_report + "\n\n" + references_section
+        # New structure: Opening (title) -> Executive Summary -> TOC -> Main Report -> References
+        final_report = opening_section + "\n\n" + executive_summary + "\n\n" + table_of_contents + "\n\n" + raw_report + "\n\n" + references_section
 
         update_progress("🏁 Enhanced final report assembly complete.")
         

@@ -1,4 +1,4 @@
-# Use an official Python runtime as a parent image
+
 FROM python:3.9-slim-bullseye
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -16,13 +16,12 @@ RUN apt-get update && \
       # Cleanup
     && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
 
-# Copy only the requirements file to leverage Docker cache
+
 COPY requirements.txt .
 
-# Install Python dependencies
+
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application code
 COPY . .
 
 # Create a non-root user and switch to it

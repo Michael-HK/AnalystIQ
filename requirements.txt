@@ -2,7 +2,7 @@ pdfkit
 markdown2
 llama-index-core>=0.10.0
 llama-index-llms-vertex
-
+llama-index-llms-openrouter
 python-dotenv
 tavily-python
 yfinance
