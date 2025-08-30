@@ -3,17 +3,16 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**AgentInvest** is an AI-powered investment analysis platform that automatically generates comprehensive financial reports for stock analysis. This Proof of Concept (PoC) demonstrates the integration of advanced AI models via OpenRouter, web scraping, financial data APIs, and automated report generation to create professional-grade investment research documents.
+**AgentInvest** is an AI-powered platform that generates professional investment theses and PDF reports from a single input: a stock ticker.
 
 ## 🚀 Key Features
 
-- **Automated Investment Research**: Generates comprehensive 6-10 page investment reports with minimal user input
-- **Multi-Source Data Integration**: Combines real-time web search, financial APIs, and market data
-- **AI-Powered Analysis**: Leverages multiple LLM models via OpenRouter for intelligent content generation and analysis
-- **Professional Report Generation**: Produces publication-ready PDF reports with charts, tables, and citations
-- **Interactive Web Interface**: User-friendly Streamlit application for easy report generation
-- **Caching System**: Redis-based caching for improved performance and reduced API calls
-- **Model Flexibility**: Access to multiple LLM providers through a single OpenRouter API
+- **One-click research** from ticker → full investment report
+- **Multi-source data** via web search (Tavily) + financials (yfinance)
+- **LLM orchestration** through OpenRouter (Gemini, GPT, Claude, etc.)
+- **Publication-ready output** with charts, tables, and citations
+- **Streamlit UI** for interactive use; CLI for batch runs
+- **Caching** with Redis to cut latency and API spend
 
 ## 📊 Report Structure
 
@@ -44,7 +43,7 @@ Each generated report follows a professional investment analysis structure:
         └──────────────┘ └─────────────┘ └────────────┘
 ```
 
-## 🛠️ Technology Stack
+## 🛠️ Tech Stack
 
 ### Core Technologies
 - **Python 3.10+** - Primary programming language
@@ -65,7 +64,7 @@ Each generated report follows a professional investment analysis structure:
 ### Infrastructure
 - **Redis** - Caching layer for performance optimization
 
-## 🎯 Why OpenRouter?
+## 🎯 OpenRouter
 
 AgentInvest uses **OpenRouter** as the LLM provider, offering several advantages:
 
@@ -75,22 +74,6 @@ AgentInvest uses **OpenRouter** as the LLM provider, offering several advantages
 - **Cost Optimization**: Compare pricing across different providers
 - **Performance Testing**: Benchmark different models for your use case
 
-### 💡 **Key Benefits**
-- **No Vendor Lock-in**: Switch between OpenAI, Google, Anthropic, Meta, and others
-- **Unified API**: Consistent interface regardless of the underlying model
-- **Competitive Pricing**: Often better rates than direct provider APIs
-- **Reliability**: Automatic failover between providers
-- **Usage Analytics**: Detailed usage tracking and cost monitoring
-
-### 🚀 **Supported Models**
-```python
-# Examples of models you can use:
-"google/gemini-2.0-flash-001"      # Fast, cost-effective
-"openai/gpt-4o"                    # High-quality reasoning  
-"anthropic/claude-3.5-sonnet"      # Excellent for analysis
-"meta-llama/llama-3.1-70b-instruct" # Open-source alternative
-```
-
 ## 📋 Prerequisites
 
 ### Required API Keys
@@ -98,82 +81,14 @@ AgentInvest uses **OpenRouter** as the LLM provider, offering several advantages
 - **Tavily API** - For web search capabilities
 
 ### System Requirements
-- Python 3.10 or higher
+- Python 3.10+ or higher
 - 4GB+ RAM recommended
 - Internet connection for API access
 - Playwright Chromium browser (automatically installed)
 
 ## 🚀 Quick Start
 
-### Option 1: Streamlit Web App (Recommended)
-
 1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd PoC_AgentInvest
-   ```
-
-2. **Set up environment variables**
-   ```bash
-   cp env.example .env
-   # Edit .env with your actual API keys
-   ```
-
-3. **Configure API credentials**
-   - Obtain an OpenRouter API key from [openrouter.ai](https://openrouter.ai)
-   - Add your API keys to the `.env` file
-
-4. **Install Python dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-5. **Install Playwright browsers**
-   ```bash
-   python -m playwright install chromium
-   ```
-
-6. **Launch Streamlit app**
-   ```bash
-   streamlit run streamlit_app.py
-   ```
-
-7. **Access the web application**
-   - Open your browser to `http://localhost:8501`
-   - Select a stock ticker and generate your first report!
-
-### Option 2: Command Line Agent (Headless)
-
-For automated or batch processing without the web interface:
-
-1. **Run a single report**
-   ```bash
-   # Generate report for Apple Inc.
-   python -m main AAPL
-   
-   # Generate report for Microsoft
-   python -m main MSFT
-   ```
-
-2. **Run multiple reports in sequence**
-   ```bash
-   # Generate reports for multiple companies
-   for ticker in AAPL MSFT GOOGL AMZN; do
-     python -m main $ticker
-   done
-   ```
-
-## 🐍 Pure Python Environment Setup
-
-### Prerequisites for Local Development
-- **Python 3.10+** installed on your system
-- **pip** package manager
-- **Git** for cloning the repository
-- **Redis** (optional, for caching - see setup below)
-
-### Complete Local Setup Guide
-
-1. **Clone and Navigate**
    ```bash
    git clone <repository-url>
    cd PoC_AgentInvest
@@ -191,116 +106,63 @@ For automated or batch processing without the web interface:
    venv\Scripts\activate
    ```
 
-3. **Install Dependencies**
+3. **Configure API credentials**
+   - Obtain an OpenRouter API key from [openrouter.ai](https://openrouter.ai)
+   - Set environment variables (no keys shown):
+
+```bash
+# macOS/Linux (bash/zsh)
+export TAVILY_API_KEY="YOUR_TAVILY_API_KEY"
+export OPENROUTER_API_KEY="YOUR_OPENROUTER_API_KEY"
+
+# Windows PowerShell
+$env:TAVILY_API_KEY="YOUR_TAVILY_API_KEY"
+$env:OPENROUTER_API_KEY="YOUR_OPENROUTER_API_KEY"
+```
+
+4. **Install Python dependencies**
    ```bash
    pip install -r requirements.txt
    ```
 
-4. **Install Playwright Browser**
+5. **Install Playwright browsers**
    ```bash
    python -m playwright install chromium
    ```
 
-5. **Environment Configuration**
+6. **Launch Streamlit app**
    ```bash
-   # Copy environment template
-   cp env.example .env
-   
-   # Edit .env file with your API keys
-   # TAVILY_API_KEY=your-tavily-key
-   # OPENROUTER_API_KEY=your-openrouter-key
+   python -m streamlit run streamlit_app.py
    ```
 
-### Running Without Redis (Simplified Setup)
-If you don't want to install Redis, the application will work without caching:
+7. **Access the web application**
+   - Open your browser to `http://localhost:8501`
+   - Select a stock ticker and generate your first report!
 
-```bash
-# Set environment variable to disable Redis
-export REDIS_DISABLED=true
+8. **CLI**
+   - Open terminal and type in
 
-# Run Streamlit app
-streamlit run streamlit_app.py
-
-# Or run CLI agent
+ ```bash
+# US example (Apple)
 python -m main AAPL
+
+# Hong Kong example (HSBC Holdings)
+python main.py 0005.HK
 ```
-
-### Running With Redis (Full Features)
-For full caching capabilities:
-
-1. **Install Redis**
-   ```bash
-   # Ubuntu/Debian
-   sudo apt-get install redis-server
-   
-   # macOS
-   brew install redis
-   
-   # Windows (using WSL or Docker)
-   # Or use Redis Cloud (free tier available)
-   ```
-
-2. **Start Redis Service**
-   ```bash
-   # Linux/macOS
-   sudo systemctl start redis
-   # or
-   redis-server
-   
-   # macOS (if installed via Homebrew)
-   brew services start redis
-   ```
-
-3. **Verify Redis Connection**
-   ```bash
-   redis-cli ping
-   # Should return: PONG
-   ```
-
-4. **Run Application**
-   ```bash
-   # Redis will be automatically detected and used
-   streamlit run streamlit_app.py
-   # or
-   python -m main AAPL
-   ```
-
 ## ⚙️ Configuration
-
-### Environment Variables
-
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `OPENROUTER_API_KEY` | API key for OpenRouter LLM access | Yes |
-| `TAVILY_API_KEY` | API key for Tavily web search | Yes |
-| `CHARTJS_SRC` | Chart.js library source URL | No (defaults to CDN) |
-| `REDIS_URL` | Redis connection URL for caching | No (defaults to localhost) |
-
-### Supported Stock Tickers
-
-The application supports:
-- **US Stocks**: AAPL, MSFT, GOOGL, AMZN, NVDA, TSLA, etc.
-- **Hong Kong Stocks**: 0001.HK, 0002.HK, etc. (200+ tickers)
-
-## 📖 Usage Examples
 
 ### Quick Reference Commands
 
 | Task | Python Command |
 |------|----------------|
-| **Start Streamlit** | `streamlit run streamlit_app.py` |
+| **Start Streamlit** | `python -m  streamlit run streamlit_app.py` |
 | **Generate Report** | `python -m main AAPL` |
-| **Stop Services** | `Ctrl+C` in terminal |
-| **Update Dependencies** | `pip install -r requirements.txt --upgrade` |
 
-### Local Command Line Interface
-```bash
-# Generate report for Apple Inc. (local installation)
-python -m main AAPL
+## Supported Stock Tickers
 
-# Generate report for Microsoft
-python -m main MSFT
-```
+The application supports:
+- **US Stocks**: AAPL, MSFT, GOOGL, AMZN, NVDA, TSLA, etc.
+- **Hong Kong Stocks**: 0001.HK, 0002.HK, etc. (200+ tickers)
 
 ### Web Interface
 1. Navigate to the Streamlit application
@@ -308,49 +170,6 @@ python -m main MSFT
 3. Click "Generate Report"
 4. Monitor progress in real-time
 5. Download the generated PDF report
-
-### Programmatic Usage
-```python
-from agent import AgentInvest
-import asyncio
-
-async def generate_report():
-    agent = AgentInvest(verbose_agent=False)
-    report = await agent.run(ticker="AAPL")
-    return report
-
-# Run the async function
-report = asyncio.run(generate_report())
-```
-
-## 🔧 Advanced Configuration
-
-### Custom Report Structure
-Modify the prompts in `prompts.py` to customize report sections and analysis depth.
-
-### AI Model Configuration
-Adjust model parameters in `agent.py`:
-```python
-self.llm = OpenRouter(
-    model="google/gemini-2.0-flash-001",  # or any other supported model
-    api_key=os.getenv("OPENROUTER_API_KEY"),
-    temperature=1,
-    max_tokens=8000
-)
-```
-
-### Supported Models via OpenRouter
-- **Google**: `google/gemini-2.0-flash-001`, `google/gemini-2.5-flash`
-- **OpenAI**: `openai/gpt-4o`, `openai/gpt-4o-mini`
-- **Anthropic**: `anthropic/claude-3.5-sonnet`, `anthropic/claude-3-haiku`
-- **Meta**: `meta-llama/llama-3.1-70b-instruct`
-- **And many more available through OpenRouter**
-
-### Caching Configuration
-Configure Redis caching in `cache_manager.py`:
-```python
-cache_manager = RedisCacheManager(ttl_seconds=3600)  # 1 hour cache
-```
 
 ## 📁 Project Structure
 
@@ -390,114 +209,6 @@ Converts Markdown reports with embedded charts into professional PDF documents u
 ### Caching System (`cache_manager.py`)
 Redis-based caching to improve performance and reduce API costs.
 
-## 🚦 Performance Optimization
-
-- **Parallel Processing**: Web and financial data queries run concurrently
-- **Intelligent Caching**: Redis caching reduces redundant API calls
-- **Batch Processing**: Report sections generated in optimized batches
-- **Resource Management**: Configurable rate limiting and timeout handling
-
-## 🔒 Security Considerations
-
-- **API Key Management**: Environment variables for secure credential storage
-- **Input Validation**: Ticker symbol validation and sanitization
-- **PDF Generation**: Secure HTML-to-PDF conversion using Playwright's sandboxed browser
-
-## 🔄 Migration from v1.x
-
-If you're upgrading from a previous version that used wkhtmltopdf:
-
-### Local Installation Users
-```bash
-# Update Python dependencies
-pip install -r requirements.txt --upgrade
-
-# Install Playwright browser
-python -m playwright install chromium
-```
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-**PDF Generation Fails**
-```bash
-# Verify Playwright Chromium installation
-python -m playwright install chromium
-
-# Check browser installation
-python -c "from playwright.sync_api import sync_playwright; p = sync_playwright(); p.start(); print('Playwright OK')"
-```
-
-**API Rate Limiting**
-- Implement delays between requests
-- Check API quota limits
-- Verify API key validity
-
-**Memory Issues**
-- Monitor memory usage during report generation
-- Consider processing reports in smaller batches
-
-**Local Python Environment Issues**
-
-**Playwright Installation Fails**
-```bash
-# Reinstall Playwright
-pip uninstall playwright
-pip install playwright
-python -m playwright install chromium
-
-# On Linux, you might need additional dependencies
-sudo apt-get install -y libnss3 libatk-bridge2.0-0 libdrm2 libxkbcommon0 libgtk-3-0 libgbm1 libasound2
-```
-
-**Redis Connection Issues**
-```bash
-# Check if Redis is running
-redis-cli ping
-
-# Start Redis if not running
-sudo systemctl start redis  # Linux
-brew services start redis   # macOS
-
-# Or disable Redis temporarily
-export REDIS_DISABLED=true
-```
-
-**Module Import Errors**
-```bash
-# Ensure virtual environment is activated
-source venv/bin/activate  # Linux/macOS
-venv\Scripts\activate     # Windows
-
-# Reinstall dependencies
-pip install -r requirements.txt --force-reinstall
-```
-
-### Debugging
-
-Enable verbose logging:
-```python
-agent = AgentInvest(verbose_agent=True)
-```
-
-## 📈 Future Enhancements
-
-- **Multi-language Support**: Localized reports in different languages
-- **Advanced Charting**: Interactive charts with drill-down capabilities
-- **Portfolio Analysis**: Multi-stock portfolio optimization reports
-- **Real-time Updates**: Live data streaming and report updates
-- **Custom Templates**: User-defined report templates and branding
-- **API Endpoints**: RESTful API for programmatic access
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
@@ -510,13 +221,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Streamlit** for the web application framework
 - **LlamaIndex** for AI agent orchestration
 - **Playwright** for modern browser automation and PDF generation
-
-## 📞 Support
-
-For questions, issues, or contributions:
-- Create an issue in the repository
-- Review the troubleshooting section above
-- Check the project documentation
 
 ---
 
