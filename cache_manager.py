@@ -57,15 +57,21 @@ class RedisCacheManager:
         logger.info(f"Cache miss for ticker: {ticker}")
         return None
 
-    def set_cached_data(self, ticker: str, company_name: str, structure: List[str], context: str) -> None:
+    def set_cached_data(self, ticker: str, company_name: str, structure: List[str], context: str, 
+                       web_results: Optional[List[Any]] = None, financial_results: Optional[List[Any]] = None,
+                       web_queries: Optional[List[str]] = None, financial_queries: Optional[List[Dict[str, str]]] = None) -> None:
         """
-        Caches the report structure and context for a given ticker.
+        Caches the report structure, context, and raw results for a given ticker.
 
         Args:
             ticker (str): The stock ticker symbol.
             company_name (str): The company name.
             structure (List[str]): The generated report structure.
             context (str): The formatted context from data gathering.
+            web_results (Optional[List[Any]]): Raw web search results.
+            financial_results (Optional[List[Any]]): Raw financial query results.
+            web_queries (Optional[List[str]]): The web search queries used.
+            financial_queries (Optional[List[Dict[str, str]]]): The financial queries used.
         """
         if not self.client:
             return
@@ -74,11 +80,15 @@ class RedisCacheManager:
         data_to_cache = {
             "company_name": company_name,
             "structure": structure,
-            "context": context
+            "context": context,
+            "web_results": web_results,
+            "financial_results": financial_results,
+            "web_queries": web_queries,
+            "financial_queries": financial_queries
         }
         
-        self.client.set(cache_key, json.dumps(data_to_cache), ex=self.ttl)
-        logger.info(f"Cached data for ticker: {ticker}")
+        self.client.set(cache_key, json.dumps(data_to_cache, default=str), ex=self.ttl)
+        logger.info(f"Cached comprehensive data for ticker: {ticker}")
 
     def clear_all_cached_reports(self) -> int:
         """

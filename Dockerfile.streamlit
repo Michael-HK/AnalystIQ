@@ -7,12 +7,19 @@ ENV PYTHONUNBUFFERED=1
 # Set the working directory in the container
 WORKDIR /app
 
-# Install system dependencies required for wkhtmltopdf
+# Install system dependencies for Playwright
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-      wkhtmltopdf \
-      chromium \
-      chromium-driver \
+      wget \
+      fontconfig \
+      # Dependencies for Playwright Chromium
+      libnss3 \
+      libatk-bridge2.0-0 \
+      libdrm2 \
+      libxkbcommon0 \
+      libgtk-3-0 \
+      libgbm1 \
+      libasound2 \
       # Cleanup
     && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
 
@@ -21,6 +28,9 @@ COPY requirements.txt .
 
 
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Install Playwright browsers
+RUN python -m playwright install chromium
 
 COPY . .
 
