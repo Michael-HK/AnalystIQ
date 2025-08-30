@@ -34,6 +34,25 @@ def run_async_in_thread(coro):
         future = executor.submit(run_in_thread)
         return future.result()
 
+footer_html = """
+<style>
+  .footer {
+    font-size: 9px;
+    color: #666;
+    width: 100%;
+    padding: 0 12mm;
+    display: flex;
+    justify-content: flex-end;  /* right-align */
+    align-items: center;
+  }
+  /* Avoid unexpected page scaling artifacts */
+  .footer * { font-family: Arial, sans-serif; }
+</style>
+<div class="footer">
+  <span><span class="pageNumber"></span> of <span class="totalPages"></span></span>
+</div>
+"""
+
 def ensure_playwright_browser():
     try:
         from playwright.sync_api import sync_playwright
@@ -569,6 +588,7 @@ async def convert_report_to_pdf(
             scale=1.0,
             prefer_css_page_size=True,
             wait_for_selector=None,
+            footer_html=footer_html,
             wait_time_ms=0,
             timeout_ms=45000,
             emulate_media="print"
@@ -633,14 +653,15 @@ async def html_to_pdf_from_string_async(
     output_pdf: str,
     base_url: Optional[str] = None,
     page_format: str = "A4",
-    margin_top: str = "15mm",
+    margin_top: str = "18mm",
     margin_right: str = "12mm",
-    margin_bottom: str = "15mm",
+    margin_bottom: str = "18mm",
     margin_left: str = "12mm",
     landscape: bool = False,
     scale: float = 1.0,
     prefer_css_page_size: bool = True,
     wait_for_selector: Optional[str] = None,
+    footer_html: Optional[str] = None,
     wait_time_ms: int = 0,
     timeout_ms: int = 45000,
     emulate_media: str = "print",
@@ -682,6 +703,7 @@ async def html_to_pdf_from_string_async(
             print_background=True,
             format=page_format,
             landscape=landscape,
+            footer_template=footer_html,
             scale=scale,
             margin={"top": margin_top, "right": margin_right, "bottom": margin_bottom, "left": margin_left},
             prefer_css_page_size=prefer_css_page_size,
