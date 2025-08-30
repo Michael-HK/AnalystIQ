@@ -1,13 +1,11 @@
 version: "3.9"
 
 services:
-  poc-agentinvest-streamlit:
+  poc-agentinvest-agent:
     build:
       context: .
-      dockerfile: Dockerfile.streamlit
-    restart: unless-stopped
-    ports:
-      - "8501:8501"
+      dockerfile: Dockerfile
+    restart: "no"  
     volumes:
       # Mount a host directory to persist generated reports
       - ./generated_reports:/app/generated_reports
@@ -21,12 +19,9 @@ services:
           cpus: '2'
           memory: 4G
     
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+    # Override the default command to specify a ticker symbol
+    # Usage: docker-compose -f docker-compose.agent.yml run poc-agentinvest-agent MSFT
+    command: ["AAPL"]  # Default ticker, can be overridden
 
   redis:
     image: redis:7-alpine

@@ -27,9 +27,7 @@ from llama_index.core.chat_engine.types import AgentChatResponse
 from tools.web_search import WebSearchTool, parallel_search
 from tools.financial_tools import FinancialToolSpec, FinancialAgent, run_financial_queries_parallel
 from utils import convert_report_to_pdf, ProgressCallback
-from utils_v2 import convert_report_to_pdf_v2
 from cache_manager import RedisCacheManager
-
 from llama_index.core.llms import ChatMessage, MessageRole
 from llama_index.llms.openrouter import OpenRouter
 
@@ -285,7 +283,7 @@ class AgentInvest:
         Build a well-formatted References section for Markdown -> HTML -> PDF.
 
         - Renders as a dedicated H2 with id="references" so CSS in utils.py can style it.
-        - Uses a bullet list for reliable wrapping and spacing in wkhtmltopdf.
+        - Uses a bullet list for reliable wrapping and spacing in PDF generation.
         - Displays the reference number in bold brackets, followed by the URL and optional title.
         """
         if not cited_numbers:
@@ -295,11 +293,11 @@ class AgentInvest:
         # Ensure deterministic ordering (optional but recommended)
         unique_sorted = sorted(set(cited_numbers), key=int)
 
-        # Header + list intro with anchor for TOC linking
+        # Header with proper HTML anchor for CSS targeting
         # Note: one blank line after header for reliable Markdown parsing.
         references_md = []
         references_md.append("\n\n---\n")
-        references_md.append('<a id="references"></a>\n\n## References\n\n')
+        references_md.append('\n<a id="references"></a>\n\n## References\n\n')
 
         valid_references_count = 0
         for num in unique_sorted:
@@ -307,21 +305,18 @@ class AgentInvest:
             if not source_info:
                 print(f"DEBUG: Warning - Citation [{num}] found in text but no source info available")
                 # Still add a placeholder reference to maintain numbering
-                references_md.append(f"- **[{num}]** Source information unavailable")
+                references_md.append(f"**[{num}]** Source information unavailable\n\n")
                 continue
 
             url = str(source_info.get("url", "")).strip()
             title = str(source_info.get("title", "")).strip()
             title_part = f" ({title})" if title else ""
 
-            # Use a list item per reference. Bold the bracketed index for clarity.
-            references_md.append(f"- **[{num}]** {title_part} (url: {url})")
+            # Use markdown format for better compatibility
+            references_md.append(f"**[{num}]** {title_part} [link]({url})\n\n")
             valid_references_count += 1
 
         print(f"DEBUG: Generated references section with {valid_references_count} valid references out of {len(unique_sorted)} cited")
-
-        # Final trailing newline helps parsers
-        references_md.append("\n")
 
         return "\n".join(references_md)
 
@@ -393,21 +388,22 @@ class AgentInvest:
 
     def _generate_table_of_contents(self, report_structure: List[str]) -> str:
         """
-        Generate a well-formatted table of contents based on the report structure.
+        Generate a well-formatted table of contents based on the report structure with proper spacing.
         Executive Summary is excluded at the structure generation level.
         """
-        toc_content = "## Table of Contents\n\n"
+        # Use HTML anchor for proper ID targeting
+        toc_content = '<a id="table-of-contents"></a>\n\n## Table of Contents\n\n'
         
-        # Use proper markdown list syntax with dashes
+        # Use markdown list structure for better compatibility
         for section in report_structure:
             section_clean = section.strip()
-            toc_content += f"- {section_clean}\n"
+            toc_content += f"{section_clean}\n"
         
         # Add References section to TOC
         toc_content += "- References\n\n"
         
         # Add page break after TOC to start main report on fresh page
-        toc_content += "\n<div style='page-break-after: always;'></div>\n\n"
+        toc_content += "<div style='page-break-after: always;'></div>\n\n"
         toc_content += "---\n\n"  # Additional separator for better visual break
         
         return toc_content
@@ -432,24 +428,29 @@ class AgentInvest:
         # Add the company/date info after the title
         opening_content = response.text.strip()
         
-        # Find the first line (title) and add the company info after it
+        # Find the first line (title) and add the company info after it with proper styling
         lines = opening_content.split('\n')
         if lines:
-            # Insert the company info after the first line (title)
+            # Insert the company info after the first line (title) with CSS class
             title_line = lines[0]
             rest_content = '\n'.join(lines[1:]) if len(lines) > 1 else ""
             
-            company_info = f"\n\n**Prepared by AgentInvest**  \n**Date: {self.current_date}**\n"
+            # Center the title using a CSS class for reliable centering
+            centered_title = f'<div class="title-page-title">\n{title_line}\n</div>'
+            
+            # Use CSS class for proper title page formatting
+            company_info = f'\n\n<div class="title-page-info">\n<strong>Prepared by AgentInvest</strong><br>\n<strong>Date: {self.current_date}</strong>\n</div>\n'
             
             # Add page break after opening section
             page_break = "\n\n<div style='page-break-after: always;'></div>\n\n---\n"
             
-            return title_line + company_info + rest_content + page_break
+            return centered_title + company_info + rest_content + page_break
         else:
-            # Fallback if no content
-            company_info = f"\n\n**Prepared by AgentInvest**  \n**Date: {self.current_date}**\n"
+            # Fallback if no content - center the entire opening content
+            centered_opening = f'<div class="title-page-title">\n{opening_content}\n</div>'
+            company_info = f'\n\n<div class="title-page-info">\n<strong>Prepared by AgentInvest</strong><br>\n<strong>Date: {self.current_date}</strong>\n</div>\n'
             page_break = "\n\n<div style='page-break-after: always;'></div>\n\n---\n"
-            return opening_content + company_info + page_break
+            return centered_opening + company_info + page_break
 
     @retry(wait=wait_exponential(multiplier=1, min=2, max=60), stop=stop_after_attempt(3))
     async def generate_executive_summary(self, company_name: str, ticker: str, raw_report: str) -> str:
@@ -468,8 +469,8 @@ class AgentInvest:
         
         response = await self.llm.acomplete(full_prompt)
         
-        # Add page break after executive summary
-        executive_summary = f"## Executive Summary\n\n{response.text.strip()}\n\n<div style='page-break-after: always;'></div>\n\n---\n"
+        # Add page break after executive summary with proper HTML anchor for CSS targeting
+        executive_summary = f'<a id="executive-summary"></a>\n\n## Executive Summary\n\n{response.text.strip()}\n\n<div style="page-break-after: always;"></div>\n\n---\n'
         
         return executive_summary
 
@@ -490,8 +491,18 @@ class AgentInvest:
             update_progress("✅ Found cached data. Skipping data gathering and using cached content.")
             company_name = cached_data['company_name']
             report_structure = cached_data['structure']
-            context = cached_data['context']
+
+            
+            # Use cached raw results if available
+            web_results = cached_data.get('web_results', [])
+            financial_results = cached_data.get('financial_results', [])
+            web_queries = cached_data.get('web_queries', [])
+            financial_queries = cached_data.get('financial_queries', [])
+            
             update_progress("🏢 Using cached company name", company_name)
+            update_progress("📊 Using cached web and financial results")
+
+            context = self._format_context(web_results, financial_results, financial_queries)
         else:
             # 1. Get company name
             company_name = self.financial_tools.get_company_name(ticker)
@@ -528,7 +539,10 @@ class AgentInvest:
             context = self._format_context(web_results, financial_results, financial_queries or [])
             
             # --- Store in Cache ---
-            self.cache_manager.set_cached_data(ticker, company_name, report_structure, context)
+            self.cache_manager.set_cached_data(
+                ticker, company_name, report_structure, context,
+                web_results, financial_results, web_queries, financial_queries
+            )
 
         # 8. Generate content for each section
         update_progress("✍️ Generating content for each report section...")
@@ -543,8 +557,6 @@ class AgentInvest:
             generated_contents.extend(await asyncio.gather(*section_generation_tasks))
             # wait for 3 seconds
             await asyncio.sleep(3)
-            
-
 
         report_sections_content = []
         for i, section_title in enumerate(report_structure):
@@ -592,11 +604,11 @@ class AgentInvest:
         reports_dir = "/app/generated_reports"
         os.makedirs(reports_dir, exist_ok=True)
         
-        # Ensure we have write permissions (additional safety check)
+
         try:
             os.chmod(reports_dir, 0o755)
         except PermissionError:
-            # If we can't change permissions, that's okay - the directory might already be correctly set up
+
             pass
         
         # Save to markdown file in the mounted volume (ensure overwrite)
@@ -632,7 +644,7 @@ class AgentInvest:
                 update_progress(f"⚠️ Warning: Could not remove existing PDF file: {e}")
 
         chartjs_src = os.getenv("CHARTJS_SRC", None)
-        pdf_success = convert_report_to_pdf(
+        pdf_success = await convert_report_to_pdf(
             final_report, 
             output_pdf_filename, 
             company_name=company_name,
@@ -649,6 +661,68 @@ class AgentInvest:
             update_progress("❌ Failed to generate PDF report.")
         
         return final_report
+
+    def regenerate_context_from_cache(self, ticker: str) -> Optional[str]:
+        """
+        Regenerate the formatted context from cached raw results.
+        Useful when you want to change formatting logic without re-fetching data.
+        
+        Args:
+            ticker (str): The stock ticker symbol.
+            
+        Returns:
+            Optional[str]: The regenerated context, or None if no cached data exists.
+        """
+        cached_data = self.cache_manager.get_cached_data(ticker)
+        if not cached_data:
+            return None
+            
+        web_results = cached_data.get('web_results', [])
+        financial_results = cached_data.get('financial_results', [])
+        financial_queries = cached_data.get('financial_queries', [])
+        
+        if not web_results and not financial_results:
+            return None
+            
+        # Regenerate context with current formatting logic
+        new_context = self._format_context(web_results, financial_results, financial_queries)
+        
+        # Update cache with new context while keeping raw results
+        self.cache_manager.set_cached_data(
+            ticker, 
+            cached_data['company_name'], 
+            cached_data['structure'], 
+            new_context,
+            web_results, 
+            financial_results, 
+            cached_data.get('web_queries', []), 
+            financial_queries
+        )
+        
+        return new_context
+
+    def get_cached_raw_results(self, ticker: str) -> Optional[Dict[str, Any]]:
+        """
+        Get the raw cached web and financial results for a ticker.
+        
+        Args:
+            ticker (str): The stock ticker symbol.
+            
+        Returns:
+            Optional[Dict[str, Any]]: Dictionary containing raw results, or None if no cached data exists.
+        """
+        cached_data = self.cache_manager.get_cached_data(ticker)
+        if not cached_data:
+            return None
+            
+        return {
+            'web_results': cached_data.get('web_results', []),
+            'financial_results': cached_data.get('financial_results', []),
+            'web_queries': cached_data.get('web_queries', []),
+            'financial_queries': cached_data.get('financial_queries', []),
+            'company_name': cached_data.get('company_name'),
+            'report_structure': cached_data.get('structure', [])
+        }
 
     async def run_v3(self, ticker: str, progress_callback: Optional[ProgressCallback] = None):
         """
@@ -672,7 +746,15 @@ class AgentInvest:
             company_name = cached_data['company_name']
             report_structure = cached_data['structure']
             context = cached_data['context']
+            
+            # Use cached raw results if available
+            web_results = cached_data.get('web_results', [])
+            financial_results = cached_data.get('financial_results', [])
+            web_queries = cached_data.get('web_queries', [])
+            financial_queries = cached_data.get('financial_queries', [])
+            
             update_progress("🏢 Using cached company name", company_name)
+            update_progress("📊 Using cached web and financial results")
         else:
             # 1. Get company name
             company_name = self.financial_tools.get_company_name(ticker)
@@ -709,7 +791,10 @@ class AgentInvest:
             context = self._format_context(web_results, financial_results, financial_queries or [])
             
             # --- Store in Cache ---
-            self.cache_manager.set_cached_data(ticker, company_name, report_structure, context)
+            self.cache_manager.set_cached_data(
+                ticker, company_name, report_structure, context,
+                web_results, financial_results, web_queries, financial_queries
+            )
 
         # 8. Generate content for each section with content-awareness
         update_progress("✍️ Generating content-aware sections with enhanced formatting...")
@@ -739,7 +824,7 @@ class AgentInvest:
             # Small delay to prevent rate limiting
             await asyncio.sleep(2)
             
-                # Create sections with anchor IDs for clickable TOC
+            # Create sections with anchor IDs for clickable TOC
         report_sections_content = []
         for i, section_title in enumerate(report_structure):
             # Create matching anchor ID for clickable TOC
@@ -748,7 +833,7 @@ class AgentInvest:
             import re
             anchor = re.sub(r'^\d+\.?\s*', '', anchor)
             
-            # Add section with HTML anchor for clickable TOC (invisible anchor before section)
+            # Add section with HTML anchor 
             report_sections_content.append(f'<a id="{anchor}"></a>\n\n## {section_title}\n\n{generated_contents[i]}')
         
         raw_report = "\n\n".join(report_sections_content)
@@ -821,12 +906,12 @@ class AgentInvest:
             except OSError as e:
                 update_progress(f"⚠️ Warning: Could not remove existing PDF file: {e}")
 
-    #    chartjs_src = os.getenv("CHARTJS_SRC", None)
-        pdf_success = convert_report_to_pdf_v2(
+        chartjs_src = os.getenv("CHARTJS_SRC", None)
+        pdf_success = await convert_report_to_pdf(
             final_report, 
             output_pdf_filename, 
             company_name=company_name,
-        #    chartjs_src=chartjs_src
+            chartjs_src=chartjs_src
         )
 
         if pdf_success:

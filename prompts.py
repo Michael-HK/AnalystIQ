@@ -117,17 +117,17 @@ Today's date is {current_date}.
 
 **Data Visualization and Tables:**
 - **Mandatory & Varied Charts**: For any numerical comparison, time-series data, or proportional data with 2 or more data points, you MUST generate a chart. A high-quality report is expected to contain **multiple charts**. You MUST use a **variety of appropriate chart types** across the report (e.g., line, bar, pie, donut). Avoid using the same chart type, like bar charts, for every visualization to ensure the report is innovative and engaging.
-- **Chart Code**: All charts must be self-contained HTML using Chart.js loaded from a CDN, wrapped in a ```html ... ``` block. They must be responsive, with a max-width of 560px.
+- **Chart Code**: All charts must be self-contained HTML using Chart.js loaded from a CDN, wrapped in a ```html ... ``` block. They must be A4-compliant with fixed dimensions of 680px × 510px.
 - **Chart Design**: Charts must have a clear title, labeled axes, and a legend if multiple datasets are plotted. For simple bar charts where categories are on the axis, the legend must be disabled.
 - **No Redundancy**: You MUST NOT use both a chart and a markdown table to represent the same data. The visualization is the sole representation.
 - **Mandatory Insights**: Every chart MUST be immediately followed by a detailed paragraph explaining the key insights, trends, and implications revealed by the visualization.
 - **Tables for Text**: Use markdown tables ONLY for structured, non-numerical data with short, concise text.
 
-**Example HTML Chart Structure:**
+**Example HTML Chart Structure (A4-Compliant):**
 
 ```html
-<div style="width:100%; max-width:560px; margin:auto;">
-  <canvas id="myChart"></canvas>
+<div style="width:680px; height:510px; margin:auto; padding:20px; box-sizing:border-box;">
+  <canvas id="myChart" width="640" height="470"></canvas>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
@@ -138,6 +138,13 @@ Today's date is {current_date}.
       // ... Chart.js data object
     }},
     options: {{
+      responsive: false,
+      maintainAspectRatio: false,
+      devicePixelRatio: 2,
+      plugins: {{
+        legend: {{ display: true }},
+        tooltip: {{ enabled: true }}
+      }},
       // ... Chart.js options object
     }}
   }});
@@ -168,9 +175,10 @@ Before generating any content, you MUST first reflect on and analyze the specifi
   - **Bullet Points**: For key insights, advantages, risks, or summary points (use • or -)
   - **Tables**: For structured comparative data, financial metrics, or categorized information
   - **Charts**: For numerical data that benefits from visual representation
+- **Professional Colors**: Use professional colors for the charts and the report. DO NOT use gray or monochrome colors.
 
 **CRITICAL: Bullet Point Formatting Rules**
-When using bullet points, you MUST follow proper spacing to ensure readability:
+When using bullet points, you MUST follow proper spacing and colon placement to ensure readability:
 
 **CORRECT FORMAT (Always use this):**
 - **First Key Point**: Detailed explanation with comprehensive analysis and context.
@@ -184,6 +192,12 @@ When using bullet points, you MUST follow proper spacing to ensure readability:
 - Second point clustered together
 - Third point also clustered
 
+**CRITICAL COLON PLACEMENT RULE:**
+- **NEVER** allow colons to appear alone on a new line
+- **ALWAYS** keep colons attached to the preceding word: "Point:" not "Point :"
+- **AVOID** excessive spacing before colons that might cause line breaks
+- **USE** non-breaking spaces if needed to keep colons with their preceding text
+
 **MANDATORY**: Each bullet point must be separated by a blank line and include substantive explanation, not just brief statements.
 
 - **Word Limit**: Each section should be between 400-500 words of text content (excluding charts, which are additional). This ensures substantial analysis while maintaining readability.
@@ -192,6 +206,7 @@ When using bullet points, you MUST follow proper spacing to ensure readability:
 - **ABSOLUTE PROHIBITION**: NEVER create charts with only 1 or 2 data points. If you only have 1-2 data points, use text emphasis, bullet points, or tables instead.
 - ALL charts visualization code must be self-contained HTML using Chart.js loaded from a CDN, wrapped in a ```html ... ``` block. They must be responsive, with a max-width of 560px.
 - DO NOT generate an empty chart.
+- STRICTLY NOTE THIS: Use professional colors for the charts and the report. DO NOT use gray or monochrome colors.
 
 **Temporal Consistency (HIGHEST PRIORITY):**
 - Maintain strict temporal consistency with today's date ({current_date}).
@@ -242,10 +257,15 @@ When using bullet points, you MUST follow proper spacing to ensure readability:
 - Properly labeled axes with font sizes: title 14px bold, ticks 12px
 - Legend management: Use legends ONLY for multiple datasets. For single dataset charts, set display: false
 - All text elements must have explicit font sizing for consistent rendering
+- **MANDATORY Colors**: Always use vibrant, professional colors with transparency for backgrounds
+  - **Background Colors**: Use rgba colors with 0.7 alpha for vibrant, visible backgrounds: ['rgba(255, 99, 132, 0.7)', 'rgba(54, 162, 235, 0.7)', 'rgba(255, 206, 86, 0.7)', 'rgba(75, 192, 192, 0.7)', 'rgba(153, 102, 255, 0.7)', 'rgba(255, 159, 64, 0.7)']
+  - **Border Colors**: Use solid colors for borders: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40']
+- **Never use gray/monochrome**: Charts must have distinct, colorful representation
 - **STRICTLY NOTE THIS**: ALWAYS prioritize the use of charts (for numerical data more than 2 data points) and tables (for structured data) to enhance the analysis and readability of the section EXCEPT when the section is purely narrative or analytical.
 - STRICTLY NOTE THIS: ALWAYS prioritize other type of visualizations (e.g. area charts, pie charts, donut charts, etc.) when they are more appropriate before use consider bar charts.
 - NOTE: Use bar charts when it is appropriate to compare multiple items.
 - DO NOT generate an empty chart.
+STRICTLY NOTE THIS: Use professional colors for the charts and the report. DO NOT use gray or monochrome colors.
 
 **Mandatory Chart Analysis (When Charts Are Used):**
 Every chart MUST be immediately followed by a detailed analytical paragraph explaining key insights, trends, implications, and strategic significance revealed by the visualization. This analysis should demonstrate sophisticated financial interpretation.
@@ -359,12 +379,18 @@ Write the content for the "{section_title}" section now. Follow all instructions
 ONLY output the content for the section, no other text. DO NOT include section title.
 The content should be maximum of 500 words.
 
+CRITICAL FORMATTING REQUIREMENTS:
+- **COLON PLACEMENT**: Never allow colons to appear alone on new lines. Always keep colons attached to their preceding word.
+- **BULLET POINTS**: Use proper spacing with blank lines between bullet points.
+- **TEXT ALIGNMENT**: Use left-aligned text to prevent awkward line breaks.
+
 STRICTLY REMEMBER: ALWAYS prioritize the use of charts (for numerical data more than 2 data points) and tables (for structured data) to enhance the analysis and readability of the section EXCEPT when the section is purely narrative or analytical.
 ALL charts visualization code must be self-contained HTML using Chart.js loaded from a CDN, wrapped in a ```html ... ``` block.
 STRICTLY NOTE THIS: DO NOT generate an empty chart.
 STRICTLY NOTE THIS: ALWAYS prioritize the use of charts (for numerical data more than 2 data points) and tables (for structured data) to enhance the analysis and readability of the section EXCEPT when the section is purely narrative or analytical.
 ANY chart you generate MUST be innovative and creative.
 ANY chart you generate MUST have at least 3 data points.
+STRICTLY NOTE THIS: Use professional colors for the charts and the report. DO NOT use gray or monochrome colors.
 """)
 
 # NEW VERSION: Content-aware generation with enhanced formatting
@@ -431,17 +457,21 @@ You MUST vary chart types throughout the report. Consider what has been used pre
 - **Variety Mandate**: Each chart in the report should use a DIFFERENT chart type unless the data specifically requires the same type
 - **Section-Specific Assessment**: Consider whether the section type would logically benefit from visualization
 
-**Chart Technical Specifications:**
+**Chart Technical Specifications (A4-Compliant):**
 - All charts must be self-contained HTML using Chart.js loaded from CDN, wrapped in ```html ... ``` blocks
-- **Fixed dimensions**: Container must be exactly 760px wide by 560px tall with 20px padding
-- **Canvas size**: Canvas element must have explicit width="720" height="520" attributes
+- **A4-Compliant dimensions**: Container must be exactly 680px wide by 510px tall with 20px padding
+- **Canvas size**: Canvas element must have explicit width="640" height="470" attributes (A4-optimized)
 - **Non-responsive**: Set responsive: false and maintainAspectRatio: false in Chart.js options
-- **High DPI**: Include devicePixelRatio: 2 for crisp rendering
+- **High DPI**: Include devicePixelRatio: 2 for crisp rendering in PDF
 - **Unique IDs**: Each chart must have a unique canvas ID (e.g., chartSection1, chartSection2)
-- Clear, descriptive titles with font size 16px and bold weight
-- Properly labeled axes with font sizes: title 14px bold, ticks 12px
+- Clear, descriptive titles with font size 14px and bold weight (optimized for A4)
+- Properly labeled axes with font sizes: title 12px bold, ticks 10px (A4-readable)
 - Legend management: Use legends for multiple datasets, disable for single dataset charts
-- Color schemes should be professional and consistent
+- Color schemes should be professional and consistent with A4 PDF rendering
+- **MANDATORY Colors**: Always use vibrant, professional colors with transparency for backgrounds
+  - **Background Colors**: Use rgba colors with 0.7 alpha for vibrant, visible backgrounds: ['rgba(255, 99, 132, 0.7)', 'rgba(54, 162, 235, 0.7)', 'rgba(255, 206, 86, 0.7)', 'rgba(75, 192, 192, 0.7)', 'rgba(153, 102, 255, 0.7)', 'rgba(255, 159, 64, 0.7)']
+  - **Border Colors**: Use solid colors for borders: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40']
+- **Never use gray/monochrome**: Charts must have distinct, colorful representation
 
 **Mandatory Chart Analysis:**
 Every chart MUST be immediately followed by a detailed analytical paragraph explaining key insights, trends, implications, and strategic significance revealed by the visualization.
@@ -483,10 +513,10 @@ When using bullet points, you MUST follow proper spacing rules:
 - **Valuation**: Scatter plots for peer comparison, bar charts for multiples
 - **Risk Assessment**: Area charts for risk exposure, horizontal bars for risk ranking
 
-**Example HTML Chart Structure (Line Chart):**
+**Example HTML Chart Structure (A4-Optimized Line Chart):**
 ```html
-<div style="width:760px; height:560px; margin:auto; padding:20px; box-sizing:border-box;">
-  <canvas id="uniqueChartId" width="720" height="520"></canvas>
+<div style="width:680px; height:510px; margin:auto; padding:20px; box-sizing:border-box;">
+  <canvas id="uniqueChartId" width="640" height="470"></canvas>
 </div>
 <script>
   const ctx = document.getElementById('uniqueChartId');
@@ -497,8 +527,8 @@ When using bullet points, you MUST follow proper spacing rules:
       datasets: [{{
         label: 'Dataset Name',
         data: [value1, value2, value3],
-        borderColor: '#2563eb',
-        backgroundColor: 'rgba(37, 99, 235, 0.1)',
+        backgroundColor: 'rgba(255, 99, 132, 0.7)',
+        borderColor: '#FF6384',
         borderWidth: 3,
         fill: true
       }}]
@@ -511,20 +541,20 @@ When using bullet points, you MUST follow proper spacing rules:
         title: {{
           display: true,
           text: 'Clear Descriptive Title',
-          font: {{ size: 16, weight: 'bold' }},
-          padding: 20
+          font: {{ size: 14, weight: 'bold' }},
+          padding: 15
         }},
         legend: {{ display: false }}
       }},
       scales: {{
         y: {{
           beginAtZero: true,
-          title: {{ display: true, text: 'Y-Axis Label', font: {{ size: 14, weight: 'bold' }} }},
-          ticks: {{ font: {{ size: 12 }} }}
+          title: {{ display: true, text: 'Y-Axis Label', font: {{ size: 12, weight: 'bold' }} }},
+          ticks: {{ font: {{ size: 10 }} }}
         }},
         x: {{
-          title: {{ display: true, text: 'X-Axis Label', font: {{ size: 14, weight: 'bold' }} }},
-          ticks: {{ font: {{ size: 12 }} }}
+          title: {{ display: true, text: 'X-Axis Label', font: {{ size: 12, weight: 'bold' }} }},
+          ticks: {{ font: {{ size: 10 }} }}
         }}
       }}
     }}
@@ -661,7 +691,7 @@ Based on the complete report content provided, you must create an executive summ
 - **Outlook**: Forward-looking perspective with key milestones
 
 **CRITICAL: Bullet Point Formatting Rules**
-When using bullet points in the executive summary, you MUST follow proper spacing:
+When using bullet points in the executive summary, you MUST follow proper spacing and colon placement:
 
 **CORRECT FORMAT for Key Investment Highlights:**
 - **Strong Capital Base**: Detailed explanation of financial strength with specific metrics and implications.
@@ -679,6 +709,12 @@ When using bullet points in the executive summary, you MUST follow proper spacin
 - Risk point without spacing
 - Another risk clustered together
 - Third risk also clustered
+
+**CRITICAL COLON PLACEMENT RULE:**
+- **NEVER** allow colons to appear alone on a new line
+- **ALWAYS** keep colons attached to the preceding word: "Risk:" not "Risk :"
+- **AVOID** excessive spacing before colons that might cause line breaks
+- **USE** compact formatting to prevent text justification issues
 
 **Requirements:**
 - Length: 200-300 words

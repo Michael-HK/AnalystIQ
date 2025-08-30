@@ -60,9 +60,8 @@ Each generated report follows a professional investment analysis structure:
 
 ### Report Generation
 - **Markdown2** - Markdown to HTML conversion
-- **wkhtmltopdf** - PDF generation from HTML
+- **Playwright** - Modern browser automation for PDF generation and chart rendering
 - **Chart.js** - Interactive chart generation
-- **html2image** - Chart rendering for PDF embedding
 
 ### Infrastructure
 - **Redis** - Caching layer for performance optimization
@@ -106,10 +105,11 @@ AgentInvest uses **OpenRouter** as the LLM provider, offering several advantages
 - Docker and Docker Compose (for containerized deployment)
 - 4GB+ RAM recommended
 - Internet connection for API access
+- Playwright Chromium browser (automatically installed)
 
 ## 🚀 Quick Start
 
-### Option 1: Docker Deployment (Recommended)
+### Option 1: Streamlit Web App (Recommended)
 
 1. **Clone the repository**
    ```bash
@@ -127,40 +127,191 @@ AgentInvest uses **OpenRouter** as the LLM provider, offering several advantages
    - Obtain an OpenRouter API key from [openrouter.ai](https://openrouter.ai)
    - Add your API keys to the `.env` file
 
-4. **Launch with Docker Compose**
+4. **Launch Streamlit app with Docker Compose**
    ```bash
    docker-compose up -d
    ```
 
-5. **Access the application**
+5. **Access the web application**
    - Open your browser to `http://localhost:8501`
    - Select a stock ticker and generate your first report!
 
-### Option 2: Local Development
+### Option 2: Command Line Agent (Headless)
 
-1. **Install system dependencies**
+For automated or batch processing without the web interface:
+
+1. **Run a single report**
    ```bash
-   # Ubuntu/Debian
-   sudo apt-get update && sudo apt-get install -y wkhtmltopdf
+   # Generate report for Apple Inc.
+   docker-compose -f docker-compose.agent.yml run --rm poc-agentinvest-agent AAPL
    
-   # macOS
-   brew install wkhtmltopdf
+   # Generate report for Microsoft
+   docker-compose -f docker-compose.agent.yml run --rm poc-agentinvest-agent MSFT
    ```
 
-2. **Install Python dependencies**
+2. **Start Redis service** (if running multiple reports)
+   ```bash
+   docker-compose -f docker-compose.agent.yml up -d redis
+   ```
+
+3. **Run multiple reports in sequence**
+   ```bash
+   # Generate reports for multiple companies
+   for ticker in AAPL MSFT GOOGL AMZN; do
+     docker-compose -f docker-compose.agent.yml run --rm poc-agentinvest-agent $ticker
+   done
+   ```
+
+### Option 3: Pure Python Environment (No Docker)
+
+1. **Install Python dependencies**
    ```bash
    pip install -r requirements.txt
    ```
 
-3. **Set up environment variables**
+2. **Install Playwright browsers**
    ```bash
-   export TAVILY_API_KEY="your-tavily-api-key"
-   export OPENROUTER_API_KEY="your-openrouter-api-key"
+   python -m playwright install chromium
    ```
 
-4. **Run the Streamlit application**
+3. **Set up environment variables**
+   ```bash
+   # Linux/macOS
+   export TAVILY_API_KEY="your-tavily-api-key"
+   export OPENROUTER_API_KEY="your-openrouter-api-key"
+   
+   # Windows (Command Prompt)
+   set TAVILY_API_KEY=your-tavily-api-key
+   set OPENROUTER_API_KEY=your-openrouter-api-key
+   
+   # Windows (PowerShell)
+   $env:TAVILY_API_KEY="your-tavily-api-key"
+   $env:OPENROUTER_API_KEY="your-openrouter-api-key"
+   ```
+
+4. **Choose your deployment method:**
+
+   **Option A: Streamlit Web App**
    ```bash
    streamlit run streamlit_app.py
+   ```
+   - Access at `http://localhost:8501`
+   - Interactive web interface for report generation
+
+   **Option B: Command Line Agent**
+   ```bash
+   # Generate report for Apple Inc.
+   python -m main AAPL
+   
+   # Generate report for Microsoft
+   python -m main MSFT
+   
+   # Generate report for Google
+   python -m main GOOGL
+   ```
+   - Headless operation for batch processing
+   - Direct command line execution
+
+## 🐍 Pure Python Environment Setup
+
+### Prerequisites for Local Development
+- **Python 3.10+** installed on your system
+- **pip** package manager
+- **Git** for cloning the repository
+- **Redis** (optional, for caching - see setup below)
+
+### Complete Local Setup Guide
+
+1. **Clone and Navigate**
+   ```bash
+   git clone <repository-url>
+   cd PoC_AgentInvest
+   ```
+
+2. **Create Virtual Environment (Recommended)**
+   ```bash
+   # Create virtual environment
+   python -m venv venv
+   
+   # Activate virtual environment
+   # Linux/macOS:
+   source venv/bin/activate
+   # Windows:
+   venv\Scripts\activate
+   ```
+
+3. **Install Dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. **Install Playwright Browser**
+   ```bash
+   python -m playwright install chromium
+   ```
+
+5. **Environment Configuration**
+   ```bash
+   # Copy environment template
+   cp env.example .env
+   
+   # Edit .env file with your API keys
+   # TAVILY_API_KEY=your-tavily-key
+   # OPENROUTER_API_KEY=your-openrouter-key
+   ```
+
+### Running Without Redis (Simplified Setup)
+If you don't want to install Redis, the application will work without caching:
+
+```bash
+# Set environment variable to disable Redis
+export REDIS_DISABLED=true
+
+# Run Streamlit app
+streamlit run streamlit_app.py
+
+# Or run CLI agent
+python -m main AAPL
+```
+
+### Running With Redis (Full Features)
+For full caching capabilities:
+
+1. **Install Redis**
+   ```bash
+   # Ubuntu/Debian
+   sudo apt-get install redis-server
+   
+   # macOS
+   brew install redis
+   
+   # Windows (using WSL or Docker)
+   # Or use Redis Cloud (free tier available)
+   ```
+
+2. **Start Redis Service**
+   ```bash
+   # Linux/macOS
+   sudo systemctl start redis
+   # or
+   redis-server
+   
+   # macOS (if installed via Homebrew)
+   brew services start redis
+   ```
+
+3. **Verify Redis Connection**
+   ```bash
+   redis-cli ping
+   # Should return: PONG
+   ```
+
+4. **Run Application**
+   ```bash
+   # Redis will be automatically detected and used
+   streamlit run streamlit_app.py
+   # or
+   python -m main AAPL
    ```
 
 ## ⚙️ Configuration
@@ -182,9 +333,30 @@ The application supports:
 
 ## 📖 Usage Examples
 
-### Command Line Interface
+### Quick Reference Commands
+
+| Task | Docker Command | Python Command |
+|------|----------------|----------------|
+| **Start Streamlit** | `docker-compose up -d` | `streamlit run streamlit_app.py` |
+| **Generate Report** | `docker-compose -f docker-compose.agent.yml run --rm poc-agentinvest-agent AAPL` | `python -m main AAPL` |
+| **View Logs** | `docker-compose logs -f poc-agentinvest-streamlit` | View terminal output |
+| **Stop Services** | `docker-compose down` | `Ctrl+C` in terminal |
+| **Update Dependencies** | `docker-compose build --no-cache` | `pip install -r requirements.txt --upgrade` |
+
+### Docker Command Line Interface
+
+### Docker Command Line Interface
 ```bash
-# Generate report for Apple Inc.
+# Generate report for Apple Inc. (using CLI agent)
+docker-compose -f docker-compose.agent.yml run --rm poc-agentinvest-agent AAPL
+
+# Generate report for Microsoft
+docker-compose -f docker-compose.agent.yml run --rm poc-agentinvest-agent MSFT
+```
+
+### Local Command Line Interface
+```bash
+# Generate report for Apple Inc. (local installation)
 python -m main AAPL
 
 # Generate report for Microsoft
@@ -241,6 +413,62 @@ Configure Redis caching in `cache_manager.py`:
 cache_manager = RedisCacheManager(ttl_seconds=3600)  # 1 hour cache
 ```
 
+#### Redis Persistence
+- **Storage**: Data persists to disk using Docker volumes
+- **Location**: Docker-managed volume (`redis_data`)
+- **Persistence**: AOF (Append-Only File) enabled for durability
+- **Benefits**: Cache survives container restarts and system reboots
+
+## 🚀 Deployment Options Comparison
+
+| Feature | Docker | Pure Python |
+|---------|--------|-------------|
+| **Setup Complexity** | Simple (one command) | Moderate (requires dependencies) |
+| **Dependencies** | Automatic | Manual installation |
+| **Cross-platform** | ✅ Yes | ⚠️ Platform-specific |
+| **Resource Usage** | Higher (container overhead) | Lower (native) |
+| **Updates** | Rebuild container | Update packages |
+| **Caching** | Redis included | Redis optional |
+| **Production** | ✅ Recommended | ⚠️ Development only |
+
+## 🐳 Docker Deployment Options
+
+### Streamlit Web App (`docker-compose.yml`)
+- **Purpose**: Interactive web interface for generating reports
+- **Services**: Streamlit app + Redis cache
+- **Access**: Web browser at `http://localhost:8501`
+- **Use Case**: Manual report generation, testing, demonstrations
+
+```bash
+# Start the web app
+docker-compose up -d
+
+# View logs
+docker-compose logs -f poc-agentinvest-streamlit
+
+# Stop the services
+docker-compose down
+```
+
+### CLI Agent (`docker-compose.agent.yml`)
+- **Purpose**: Headless batch processing
+- **Services**: CLI agent + Redis cache  
+- **Access**: Command line only
+- **Use Case**: Automation, batch processing, CI/CD pipelines
+
+```bash
+# Generate single report
+docker-compose -f docker-compose.agent.yml run --rm poc-agentinvest-agent AAPL
+
+# Start Redis for caching (optional for multiple runs)
+docker-compose -f docker-compose.agent.yml up -d redis
+
+# Batch processing
+for ticker in AAPL MSFT GOOGL; do
+  docker-compose -f docker-compose.agent.yml run --rm poc-agentinvest-agent $ticker
+done
+```
+
 ## 📁 Project Structure
 
 ```
@@ -249,15 +477,16 @@ PoC_AgentInvest/
 ├── streamlit_app.py         # Web interface
 ├── main.py                  # CLI entry point
 ├── prompts.py               # AI prompts and templates
-├── utils.py                 # PDF generation utilities
-├── utils_v2.py             # Enhanced PDF utilities
+├── utils.py                 # Playwright-based PDF generation utilities
 ├── cache_manager.py         # Redis caching layer
 ├── gemini_vertex.py         # Legacy Vertex AI integration (deprecated)
 ├── plot_utils.py           # Chart generation utilities
 ├── tickers.py              # Supported stock tickers
 ├── requirements.txt         # Python dependencies
-├── Dockerfile              # Container configuration
-├── docker-compose.yml      # Multi-service setup
+├── Dockerfile              # CLI agent container configuration
+├── Dockerfile.streamlit    # Streamlit app container configuration
+├── docker-compose.yml      # Streamlit web app setup
+├── docker-compose.agent.yml # CLI agent setup
 ├── tools/                  # Specialized tools
 │   ├── web_search.py       # Tavily web search
 │   ├── financial_tools.py  # Yahoo Finance integration
@@ -276,8 +505,8 @@ Handles web search queries using Tavily API for current market information and n
 ### Financial Tools (`tools/financial_tools.py`)
 Integrates with Yahoo Finance for historical data, financial statements, and company information.
 
-### Report Generation (`utils.py`, `utils_v2.py`)
-Converts Markdown reports with embedded charts into professional PDF documents.
+### Report Generation (`utils.py`)
+Converts Markdown reports with embedded charts into professional PDF documents using Playwright.
 
 ### Caching System (`cache_manager.py`)
 Redis-based caching to improve performance and reduce API costs.
@@ -293,8 +522,34 @@ Redis-based caching to improve performance and reduce API costs.
 
 - **API Key Management**: Environment variables for secure credential storage
 - **Input Validation**: Ticker symbol validation and sanitization
-- **PDF Generation**: Secure HTML-to-PDF conversion with sandboxing
+- **PDF Generation**: Secure HTML-to-PDF conversion using Playwright's sandboxed browser
 - **Network Security**: Containerized deployment with network isolation
+
+## 🔄 Migration from v1.x
+
+If you're upgrading from a previous version that used wkhtmltopdf:
+
+### Docker Users
+```bash
+# Remove old containers and images
+docker-compose down
+docker image prune -f
+
+# Rebuild with new configuration
+docker-compose build --no-cache
+docker-compose up -d
+```
+
+### Local Installation Users
+```bash
+# Update Python dependencies
+pip install -r requirements.txt --upgrade
+
+# Install Playwright browser
+python -m playwright install chromium
+
+
+```
 
 ## 🐛 Troubleshooting
 
@@ -302,11 +557,11 @@ Redis-based caching to improve performance and reduce API costs.
 
 **PDF Generation Fails**
 ```bash
-# Verify wkhtmltopdf installation
-wkhtmltopdf --version
+# Verify Playwright Chromium installation
+python -m playwright install chromium
 
-# Check system dependencies
-docker exec -it container_name wkhtmltopdf --version
+# Check browser installation
+python -c "from playwright.sync_api import sync_playwright; p = sync_playwright(); p.start(); print('Playwright OK')"
 ```
 
 **API Rate Limiting**
@@ -315,9 +570,45 @@ docker exec -it container_name wkhtmltopdf --version
 - Verify API key validity
 
 **Memory Issues**
-- Increase Docker memory limits
+- Increase Docker memory limits (Docker only)
 - Monitor memory usage during report generation
 - Consider processing reports in smaller batches
+
+**Local Python Environment Issues**
+
+**Playwright Installation Fails**
+```bash
+# Reinstall Playwright
+pip uninstall playwright
+pip install playwright
+python -m playwright install chromium
+
+# On Linux, you might need additional dependencies
+sudo apt-get install -y libnss3 libatk-bridge2.0-0 libdrm2 libxkbcommon0 libgtk-3-0 libgbm1 libasound2
+```
+
+**Redis Connection Issues**
+```bash
+# Check if Redis is running
+redis-cli ping
+
+# Start Redis if not running
+sudo systemctl start redis  # Linux
+brew services start redis   # macOS
+
+# Or disable Redis temporarily
+export REDIS_DISABLED=true
+```
+
+**Module Import Errors**
+```bash
+# Ensure virtual environment is activated
+source venv/bin/activate  # Linux/macOS
+venv\Scripts\activate     # Windows
+
+# Reinstall dependencies
+pip install -r requirements.txt --force-reinstall
+```
 
 ### Debugging
 
@@ -328,7 +619,11 @@ agent = AgentInvest(verbose_agent=True)
 
 Check container logs:
 ```bash
-docker-compose logs -f poc-agentinvest-app
+# For Streamlit app
+docker-compose logs -f poc-agentinvest-streamlit
+
+# For CLI agent
+docker-compose -f docker-compose.agent.yml logs -f poc-agentinvest-agent
 ```
 
 ## 📈 Future Enhancements
@@ -359,6 +654,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Yahoo Finance** for financial data access
 - **Streamlit** for the web application framework
 - **LlamaIndex** for AI agent orchestration
+- **Playwright** for modern browser automation and PDF generation
 
 ## 📞 Support
 
