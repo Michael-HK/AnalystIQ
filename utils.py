@@ -187,14 +187,14 @@ def create_pdf_html_document(body_html: str, company_name: str) -> str:
         li {{
             margin: 0.5em 0;
             line-height: 1.5;
-            text-align: left;
+            text-align: justify;
             word-wrap: break-word;
             hyphens: none;
         }}
         
         /* Prevent colon jumping in list items */
         li p {{
-            text-align: left;
+            text-align: justify;
             margin: 0.3em 0;
         }}
         

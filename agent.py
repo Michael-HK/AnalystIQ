@@ -436,7 +436,9 @@ class AgentInvest:
             rest_content = '\n'.join(lines[1:]) if len(lines) > 1 else ""
             
             # Center the title using a CSS class for reliable centering
-            centered_title = f'<div class="title-page-title">\n{title_line}\n</div>'
+            # Remove markdown header syntax if present
+            clean_title = title_line.replace('## ', '').replace('# ', '')
+            centered_title = f'<div class="title-page-title">\n{clean_title}\n</div>'
             
             # Use CSS class for proper title page formatting
             company_info = f'\n\n<div class="title-page-info">\n<strong>Prepared by AgentInvest</strong><br>\n<strong>Date: {self.current_date}</strong>\n</div>\n'
@@ -447,7 +449,9 @@ class AgentInvest:
             return centered_title + company_info + rest_content + page_break
         else:
             # Fallback if no content - center the entire opening content
-            centered_opening = f'<div class="title-page-title">\n{opening_content}\n</div>'
+            # Remove markdown header syntax if present
+            clean_opening = opening_content.replace('## ', '').replace('# ', '')
+            centered_opening = f'<div class="title-page-title">\n{clean_opening}\n</div>'
             company_info = f'\n\n<div class="title-page-info">\n<strong>Prepared by AgentInvest</strong><br>\n<strong>Date: {self.current_date}</strong>\n</div>\n'
             page_break = "\n\n<div style='page-break-after: always;'></div>\n\n---\n"
             return centered_opening + company_info + page_break
