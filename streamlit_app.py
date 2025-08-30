@@ -138,7 +138,7 @@ def main():
                 asyncio.run(agent.run(ticker=selected_ticker, progress_callback=update_ui))
 
                 st.session_state.report_generated = True
-                st.session_state.pdf_path = f"/app/generated_reports/{selected_ticker}_AgentInvest_Report.pdf"
+                st.session_state.pdf_path = f"generated_reports/{selected_ticker}_AgentInvest_Report.pdf"
 
             except Exception as e:
                 # Make the error much more visible

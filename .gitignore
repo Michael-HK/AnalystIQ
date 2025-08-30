@@ -53,9 +53,7 @@ generated_reports/
 *.pdf
 *.md.backup
 
-# Credentials (IMPORTANT: Keep these secure)
 # Google Cloud Service Account JSON files
-Midas-Gemini-IAM-Admin.json
 *.json
 .env.local
 .env.production
@@ -73,6 +71,3 @@ temp/
 
 # Redis
 dump.rdb
-
-# gemini
-Midas-Gemini-IAM-Admin.json
