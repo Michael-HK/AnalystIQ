@@ -605,15 +605,8 @@ class AgentInvest:
         update_progress("🏁 Final report assembly complete.")
         
         # Ensure the generated_reports directory exists with correct permissions
-        reports_dir = "/app/generated_reports"
+        reports_dir = "./generated_reports"
         os.makedirs(reports_dir, exist_ok=True)
-        
-
-        try:
-            os.chmod(reports_dir, 0o755)
-        except PermissionError:
-
-            pass
         
         # Save to markdown file in the mounted volume (ensure overwrite)
         output_md_filename = os.path.join(reports_dir, f"{ticker}_AgentInvest_Report.md")
@@ -868,7 +861,7 @@ class AgentInvest:
         update_progress("🏁 Enhanced final report assembly complete.")
         
         # Ensure the generated_reports directory exists with correct permissions
-        reports_dir = "/app/generated_reports"
+        reports_dir = "generated_reports"
         os.makedirs(reports_dir, exist_ok=True)
         
         # Ensure we have write permissions (additional safety check)
