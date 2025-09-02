@@ -20,6 +20,7 @@ from prompts import (
     GENERATE_EXECUTIVE_SUMMARY_PROMPT,
     CONTENT_GENERATION_SYSTEM_PROMPT_v2,
     CONTENT_GENERATION_USER_PROMPT,
+    CONTENT_GENERATION_USER_PROMPT_v3,
     POLISH_REPORT_SYSTEM_PROMPT,
     POLISH_REPORT_USER_PROMPT,
 )
@@ -203,7 +204,7 @@ class AgentInvest:
     @retry(wait=wait_exponential(multiplier=1, min=2, max=60), stop=stop_after_attempt(3))
     async def generate_section(self, section_title: str, company_name: str, context: str) -> str:
         system_prompt = CONTENT_GENERATION_SYSTEM_PROMPT_v2.format(current_date=self.current_date)
-        user_prompt = CONTENT_GENERATION_USER_PROMPT.format(
+        user_prompt = CONTENT_GENERATION_USER_PROMPT_v3.format(
             section_title=section_title,
             company_name=company_name,
             context=context
@@ -223,9 +224,8 @@ class AgentInvest:
         NEW VERSION: Content-aware section generation with enhanced formatting and chart variety.
         This version considers previous sections for better flow and chart type diversity.
         """
-        from prompts import CONTENT_GENERATION_SYSTEM_PROMPT_v4, CONTENT_GENERATION_USER_PROMPT_v3
         
-        system_prompt = CONTENT_GENERATION_SYSTEM_PROMPT_v4.format(current_date=self.current_date)
+        system_prompt = CONTENT_GENERATION_SYSTEM_PROMPT_v2.format(current_date=self.current_date)
         user_prompt = CONTENT_GENERATION_USER_PROMPT_v3.format(
             section_title=section_title,
             company_name=company_name,
@@ -552,15 +552,38 @@ class AgentInvest:
         update_progress("✍️ Generating content for each report section...")
         #generate content for each section using for batch of 3 sections at a time
         generated_contents = []
-        for i in range(0, len(report_structure), 3):
-            batch = report_structure[i:i+3]
-            section_generation_tasks = [
-                self.generate_section(section, company_name, context)
-                for section in batch
-            ]
-            generated_contents.extend(await asyncio.gather(*section_generation_tasks))
+        previous_sections_content = ""
+        for i, section_title in enumerate(report_structure):
+
+            section_content = await self.generate_section_v3(
+                section_title, 
+                company_name, 
+                context, 
+                previous_sections_content
+            )
+            generated_contents.append(section_content)
+        #    section_generation_tasks = [
+        #        self.generate_section_v3(section_title, company_name, context, previous_sections_content)
+        #    ]
+        #    generated_contents.extend(await asyncio.gather(*section_generation_tasks))
+
+            # Build cumulative previous content for next section
+            formatted_section = f"## {section_title}\n\n{section_content}"
+            if previous_sections_content:
+                previous_sections_content += "\n\n" + formatted_section
+            else:
+                previous_sections_content = formatted_section
+            await asyncio.sleep(2)
+
+    #    for i in range(0, len(report_structure), 3):
+    #        batch = report_structure[i:i+3]
+    #        section_generation_tasks = [
+    #            self.generate_section_v3(section, company_name, context, previous_sections_content)
+    #            for section in batch
+    #        ]
+    #        generated_contents.extend(await asyncio.gather(*section_generation_tasks))
             # wait for 3 seconds
-            await asyncio.sleep(3)
+    #        await asyncio.sleep(3)
 
         report_sections_content = []
         for i, section_title in enumerate(report_structure):
