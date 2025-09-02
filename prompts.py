@@ -167,6 +167,13 @@ Before generating any content, you MUST first reflect on and analyze the specifi
 - What insights and conclusions should this section deliver?
 - How does this section contribute to the overall investment thesis?
 
+- **Previous Content Analysis**: If previous sections are provided, identify:
+  - What key themes, findings, or conclusions have been established?
+  - What chart types have already been used (line, bar, pie, etc.)?
+  - What gaps or questions from previous sections can this section address?
+  - How can this section build upon or complement the previous analysis?
+  - What new perspective or analytical angle can this section contribute?
+
 **Core Instructions:**
 - **Professional Tone**: Adopt a formal, analytical tone with precise, objective language that maintains conversational flow without robotic phrasing.
 - **In-Depth Analysis**: Synthesize information from multiple sources, identify trends, and provide actionable insights. Do not merely summarize. Your output should demonstrate deep analytical thinking with well-structured content.
@@ -176,6 +183,16 @@ Before generating any content, you MUST first reflect on and analyze the specifi
   - **Tables**: For structured comparative data, financial metrics, or categorized information
   - **Charts**: For numerical data that benefits from visual representation
 - **Professional Colors**: Use professional colors for the charts and the report. DO NOT use gray or monochrome colors.
+
+**Previous Sections Integration (CRITICAL):**
+When previous sections content is provided, you MUST:
+- **Build Upon Previous Analysis**: Reference insights, findings, or conclusions from earlier sections where relevant
+- **Maintain Narrative Flow**: Use transitional phrases like "Building on the analysis in the previous section..." or "As established earlier..." to create seamless connections
+- **Avoid Duplication**: Do not repeat information already covered in previous sections; instead, expand upon or complement it
+- **Chart Type Diversity**: Identify what chart types have been used in previous sections and deliberately choose DIFFERENT chart types for this section
+- **Cross-Reference When Appropriate**: Reference specific findings from previous sections using phrases like "As discussed in the Business Overview section..." or "This aligns with the financial trends identified earlier..."
+- **Progressive Depth**: Each section should build upon the foundation established by previous sections, adding new layers of analysis rather than starting fresh
+
 
 **CRITICAL: Bullet Point Formatting Rules**
 When using bullet points, you MUST follow proper spacing and colon placement to ensure readability:
@@ -249,8 +266,8 @@ When using bullet points, you MUST follow proper spacing and colon placement to 
 
 **Chart Technical Specifications:**
 - All charts MUST be self-contained HTML using Chart.js loaded from CDN, wrapped in ```html ... ``` blocks
-- **Fixed dimensions**: Container must be exactly 760px wide by 560px tall with 20px padding
-- **Canvas size**: Canvas element must have explicit width="720" height="520" attributes
+- **Fixed dimensions**: Container MUST be exactly 760px wide by 560px tall with 20px padding
+- **Canvas size**: Canvas element MUST have explicit width="720" height="520" attributes
 - **Non-responsive**: Set responsive: false and maintainAspectRatio: false in Chart.js options
 - **High DPI**: Include devicePixelRatio: 2 for crisp rendering
 - Clear, descriptive titles with font size 16px and bold weight
@@ -391,6 +408,47 @@ STRICTLY NOTE THIS: ALWAYS prioritize the use of charts (for numerical data more
 ANY chart you generate MUST be innovative and creative.
 ANY chart you generate MUST have at least 3 data points.
 STRICTLY NOTE THIS: Use professional colors for the charts and the report. DO NOT use gray or monochrome colors.
+""")
+
+
+CONTENT_GENERATION_USER_PROMPT_v3 = PromptTemplate("""
+Company: {company_name}
+Report Section to write: "{section_title}"
+
+Previous Sections Content (for context and flow):
+---
+{previous_content}
+---
+
+Available Context (Cite these sources using their number, e.g., [1], [2]):
+---
+{context}
+---
+
+Write the content for the "{section_title}" section now. Follow all instructions from your system prompt precisely.
+
+IMPORTANT REQUIREMENTS:
+1. Consider the previous sections to ensure smooth narrative flow and avoid duplication
+2. Use different chart types from those already used in previous sections
+3. Reference previous sections where appropriate to build upon the analysis
+4. Use varied formatting: paragraphs, bullet points, and tables as appropriate
+5. **CRITICAL CHART RULE**: Only create charts if you have 3+ data points for comparison or trends. NEVER create charts with just 1 or 2 data points.
+6. **Data Validation**: Only create charts if you have actual numerical data from the provided context. Never create empty charts or use placeholder data.
+7. **Single Data Point Alternative**: If you have only 1-2 data points, present them using bold text, bullet points, or tables instead of charts.
+8. ONLY output the content for the section, no other text. DO NOT include section title.
+9. Target 400-500 words of text content (charts are additional and do not count toward word limit).
+
+CRITICAL FORMATTING REQUIREMENTS:
+- **COLON PLACEMENT**: Never allow colons to appear alone on new lines. Always keep colons attached to their preceding word.
+- **BULLET POINTS**: Use proper spacing with blank lines between bullet points.
+- **TEXT ALIGNMENT**: Use left-aligned text to prevent awkward line breaks.
+
+STRICTLY REMEMBER: ALWAYS prioritize the use of charts (for numerical data more than 2 data points) and tables (for structured data) to enhance the analysis and readability of the section EXCEPT when the section is purely narrative or analytical.
+ALL charts visualization code must be self-contained HTML using Chart.js loaded from a CDN, wrapped in a ```html ... ``` block.
+STRICTLY NOTE THIS: DO NOT generate an empty chart.
+ANY chart you generate MUST be innovative and creative.
+
+ONLY output the content for the section, no other text. DO NOT include section title.
 """)
 
 # NEW VERSION: Content-aware generation with enhanced formatting
@@ -563,35 +621,7 @@ When using bullet points, you MUST follow proper spacing rules:
 ```
 """)
 
-CONTENT_GENERATION_USER_PROMPT_v3 = PromptTemplate("""
-Company: {company_name}
-Report Section to write: "{section_title}"
 
-Previous Sections Content (for context and flow):
----
-{previous_content}
----
-
-Available Context (Cite these sources using their number, e.g., [1], [2]):
----
-{context}
----
-
-Write the content for the "{section_title}" section now. Follow all instructions from your system prompt precisely.
-
-IMPORTANT REQUIREMENTS:
-1. Consider the previous sections to ensure smooth narrative flow and avoid duplication
-2. Use different chart types from those already used in previous sections
-3. Reference previous sections where appropriate to build upon the analysis
-4. Use varied formatting: paragraphs, bullet points, and tables as appropriate
-5. **CRITICAL CHART RULE**: Only create charts if you have 3+ data points for comparison or trends. NEVER create charts with just 1 or 2 data points.
-6. **Data Validation**: Only create charts if you have actual numerical data from the provided context. Never create empty charts or use placeholder data.
-7. **Single Data Point Alternative**: If you have only 1-2 data points, present them using bold text, bullet points, or tables instead of charts.
-8. ONLY output the content for the section, no other text. DO NOT include section title.
-9. Target 400-500 words of text content (charts are additional and don't count toward word limit).
-
-ONLY output the content for the section, no other text. DO NOT include section title.
-""")
 
 # 5. Prompts for polishing the final, long-form report
 POLISH_REPORT_SYSTEM_PROMPT = PromptTemplate("""
