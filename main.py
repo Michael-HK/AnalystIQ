@@ -1,6 +1,6 @@
 import asyncio
 import argparse
-from .agent import AgentInvest
+from agent import AgentInvest
 
 def main():
     parser = argparse.ArgumentParser(description="Run AgentInvest PoC.")
