@@ -198,7 +198,7 @@ def create_pdf_html_document(body_html: str, company_name: str) -> str:
         }}
         
         ol {{ 
-            margin: 0.8em 0 0.8em 1.5em; 
+            margin: 0.8em 0 0.8em 2.5em; 
             padding: 0;
             line-height: 1.5;
         }}
@@ -321,8 +321,7 @@ def create_pdf_html_document(body_html: str, company_name: str) -> str:
 # 2. create a standalone HTML document for chart rendering with maximum color preservation
 def create_color_preserving_chart_html(chart_html: str, chartjs_src: Optional[str] = None) -> str:
     """
-    Create a standalone HTML document for chart rendering with maximum color preservation
-    and reliable rendering (prevents empty charts).
+    Create a standalone HTML document for chart rendering with maximum color preservation.
     This version is optimized for software rendering (no GPU) while preserving colors.
     """
     return f"""<!DOCTYPE html>
@@ -389,29 +388,14 @@ def create_color_preserving_chart_html(chart_html: str, chartjs_src: Optional[st
 <body style="background: white !important;">
     {chart_html}
     <script>
-        // Wait for DOM and Chart.js to load, then force color settings and reliable rendering
+        // Wait for DOM and Chart.js to load, then force color settings
         document.addEventListener('DOMContentLoaded', function() {{
-            // Force Chart.js defaults for color preservation AND reliable rendering
+            // Force Chart.js defaults for color preservation
             if (typeof Chart !== 'undefined') {{
-                // Color preservation settings
                 Chart.defaults.plugins.legend.labels.usePointStyle = true;
                 Chart.defaults.color = '#000000';
                 Chart.defaults.backgroundColor = 'rgba(255, 255, 255, 1)';
                 Chart.defaults.borderColor = 'rgba(0, 0, 0, 0.1)';
-                
-                // CRITICAL: Disable animations to prevent empty charts
-                Chart.defaults.animation = false;
-                Chart.defaults.animations = {{}};
-                Chart.defaults.transitions = {{}};
-                
-                // CRITICAL: Force non-responsive mode for consistent rendering
-                Chart.defaults.responsive = false;
-                Chart.defaults.maintainAspectRatio = false;
-                
-                // Set fixed dimensions
-                Chart.defaults.layout = {{
-                    padding: 10
-                }};
                 
                 // Override any potential theme detection
                 Chart.defaults.plugins.legend.labels.color = '#000000';
@@ -422,61 +406,18 @@ def create_color_preserving_chart_html(chart_html: str, chartjs_src: Optional[st
                 Chart.defaults.scales.y.ticks = Chart.defaults.scales.y.ticks || {{}};
                 Chart.defaults.scales.x.ticks.color = '#000000';
                 Chart.defaults.scales.y.ticks.color = '#000000';
-                
-                // Ensure grid lines are visible
-                Chart.defaults.scales.x.grid = Chart.defaults.scales.x.grid || {{}};
-                Chart.defaults.scales.y.grid = Chart.defaults.scales.y.grid || {{}};
-                Chart.defaults.scales.x.grid.color = 'rgba(0, 0, 0, 0.1)';
-                Chart.defaults.scales.y.grid.color = 'rgba(0, 0, 0, 0.1)';
             }}
             
-            // Force all canvas elements to use proper color space and dimensions
+            // Force all canvas elements to use proper color space
             const canvases = document.querySelectorAll('canvas');
             canvases.forEach(canvas => {{
                 const ctx = canvas.getContext('2d');
                 if (ctx) {{
                     ctx.imageSmoothingEnabled = true;
                     ctx.imageSmoothingQuality = 'high';
-                    
-                    // Set explicit canvas dimensions if not set
-                    if (!canvas.width || canvas.width === 0) {{
-                        canvas.width = 760;  // Accounting for padding
-                    }}
-                    if (!canvas.height || canvas.height === 0) {{
-                        canvas.height = 560; // Accounting for padding
-                    }}
                 }}
             }});
-            
-            // Additional safeguard: Override any chart instances that might have animations
-            setTimeout(() => {{
-                if (window.Chart && Chart.instances) {{
-                    Object.values(Chart.instances).forEach(chart => {{
-                        if (chart.options) {{
-                            chart.options.animation = false;
-                            chart.options.animations = {{}};
-                            chart.options.transitions = {{}};
-                            chart.options.responsive = false;
-                            chart.options.maintainAspectRatio = false;
-                            
-                            // Force update without animation
-                            chart.update('none');
-                        }}
-                    }});
-                }}
-            }}, 100);
         }});
-        
-        // Global error handler for chart rendering issues
-        window.addEventListener('error', function(e) {{
-            console.error('Chart rendering error:', e);
-        }});
-        
-        // Signal when page is ready for screenshot
-        window.chartReady = false;
-        setTimeout(() => {{
-            window.chartReady = true;
-        }}, 1000);
     </script>
 </body>
 </html>"""
@@ -533,7 +474,7 @@ async def convert_report_to_pdf(
         # 1. Process chart blocks and replace with image placeholders
         async def chart_to_image_replacer(m: Match[str]) -> str:
             chart_html = m.group(1)
-
+    
             # Use the specialized color-preserving HTML function
             chart_doc = create_color_preserving_chart_html(chart_html, chartjs_src)
             
@@ -552,8 +493,6 @@ async def convert_report_to_pdf(
                             '--disable-dev-shm-usage',
                             '--force-color-profile=srgb',
                             '--disable-background-timer-throttling',
-                            '--disable-backgrounding-occluded-windows',
-                            '--disable-renderer-backgrounding'
                         ]
                     )
                     
@@ -569,43 +508,13 @@ async def convert_report_to_pdf(
                     await page.wait_for_function("typeof Chart !== 'undefined'", timeout=15000)
                     logger.info(f"Chart.js loaded for chart {len(image_paths)}")
                     
-                    # Wait for canvas elements to be present
+                    # Wait for any canvas elements to be present
                     await page.wait_for_selector("canvas", timeout=15000)
-
-                    # Wait for the ready signal 
-                    await page.wait_for_function("window.chartReady === true", timeout=15000)
-                    logger.info(f"Chart {len(image_paths)} ready signal received")
                     
-                    # Verify chart content actually rendered
-                    try:
-                        await page.wait_for_function("""
-                            () => {
-                                const canvas = document.querySelector('canvas');
-                                if (!canvas) return false;
-                                
-                                // Check canvas dimensions are valid
-                                if (canvas.width === 0 || canvas.height === 0) return false;
-                                
-                                try {
-                                    const ctx = canvas.getContext('2d');
-                                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                                    
-                                    // Check if canvas has any non-transparent pixels
-                                    for (let i = 3; i < imageData.data.length; i += 4) {
-                                        if (imageData.data[i] > 0) return true;
-                                    }
-                                } catch (e) {
-                                    console.log('Canvas check error:', e);
-                                    return false;
-                                }
-                                return false;
-                            }
-                        """, timeout=5000)
-                        logger.info(f"Chart {len(image_paths)} content verified")
-                    except Exception as content_wait_error:
-                        logger.warning(f"Could not verify chart content, proceeding anyway: {content_wait_error}")
+                    # Additional wait for Chart.js rendering and animations
+                    await page.wait_for_timeout(3000)
                     
-                    # Take screenshot
+                    # Take screenshot with specific options for color preservation
                     await page.screenshot(
                         path=output_path,
                         type='png',
@@ -614,11 +523,11 @@ async def convert_report_to_pdf(
                     )
                     
                     await browser.close()
-                    logger.info(f"Chart {len(image_paths)} rendered successfully")
+                    logger.info(f"Chart {len(image_paths)} rendered successfully with Playwright")
                     
             except Exception as e:
                 logger.error(f"Failed to render chart with Playwright: {e}")
-                return '<div style="text-align:center; color: red;">Chart could not be rendered (Playwright error)</div>'
+                return '<div style="text-align:center; color: red;">Chart could not be rendered</div>'
             
             # Verify the image was actually created
             if not os.path.exists(output_path):
@@ -630,8 +539,7 @@ async def convert_report_to_pdf(
             logger.info(f"Generated chart image: {output_path}, size: {file_size} bytes")
             
             if file_size < 1000:  # Very small file might indicate rendering failure
-                logger.error(f"Chart image file size is suspiciously small: {file_size} bytes - likely empty chart")
-                return '<div style="text-align:center; color: red;">Chart rendering produced empty result</div>'
+                logger.warning(f"Chart image file size is suspiciously small: {file_size} bytes")
             
             image_paths.append(output_path)
             
@@ -795,7 +703,15 @@ async def html_to_pdf_from_string_async(
             print_background=True,
             format=page_format,
             landscape=landscape,
-            footer_template=footer_html,
+            display_header_footer=True,
+            header_template="""
+            <div style="font-size:8px; width:100%; text-align:right; color:#888;"></div>
+            """,
+            footer_template="""
+            <div style="font-size:10px; width:100%; text-align:right; color:#444; padding-right:20px;">
+              Page <span class="pageNumber"></span> of <span class="totalPages"></span>
+            </div>
+            """,
             scale=scale,
             margin={"top": margin_top, "right": margin_right, "bottom": margin_bottom, "left": margin_left},
             prefer_css_page_size=prefer_css_page_size,
