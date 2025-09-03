@@ -394,13 +394,17 @@ class AgentInvest:
         # Use HTML anchor for proper ID targeting
         toc_content = '<a id="table-of-contents"></a>\n\n## Table of Contents\n\n'
         
-        # Use markdown list structure for better compatibility
-        for section in report_structure:
+        # Number each section properly in the TOC
+        for i, section in enumerate(report_structure, 1):
             section_clean = section.strip()
-            toc_content += f"{section_clean}\n"
+            # Remove any existing numbering from the section title
+            section_clean = section_clean.lstrip('0123456789. ')
+            # Add proper numbering
+            toc_content += f"{i}. {section_clean}\n"
         
-        # Add References section to TOC
-        toc_content += "- References\n\n"
+        # Add References section with proper sequential numbering
+        references_number = len(report_structure) + 1
+        toc_content += f"{references_number}. References\n\n"
         
         # Add page break after TOC to start main report on fresh page
         toc_content += "<div style='page-break-after: always;'></div>\n\n"
