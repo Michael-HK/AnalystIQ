@@ -19,7 +19,6 @@ from prompts import (
     GENERATE_OPENING_SECTION_PROMPT,
     GENERATE_EXECUTIVE_SUMMARY_PROMPT,
     CONTENT_GENERATION_SYSTEM_PROMPT_v2,
-    CONTENT_GENERATION_USER_PROMPT,
     CONTENT_GENERATION_USER_PROMPT_v3,
     POLISH_REPORT_SYSTEM_PROMPT,
     POLISH_REPORT_USER_PROMPT,
@@ -668,11 +667,15 @@ class AgentInvest:
                 update_progress(f"⚠️ Warning: Could not remove existing PDF file: {e}")
 
         chartjs_src = os.getenv("CHARTJS_SRC", None)
+        logo_path = os.getenv("MIDAS_LOGO_PATH", None)
+        website_url = os.getenv("MIDAS_WEBSITE_URL", "https://midasanalytics.ai")
         pdf_success = await convert_report_to_pdf(
             final_report, 
             output_pdf_filename, 
             company_name=company_name,
-            chartjs_src=chartjs_src
+            chartjs_src=chartjs_src,
+            logo_path=logo_path,
+            website_url=website_url
         )
 
         if pdf_success:
@@ -931,11 +934,15 @@ class AgentInvest:
                 update_progress(f"⚠️ Warning: Could not remove existing PDF file: {e}")
 
         chartjs_src = os.getenv("CHARTJS_SRC", None)
+        logo_path = os.getenv("MIDAS_LOGO_PATH", None)
+        website_url = os.getenv("MIDAS_WEBSITE_URL", "https://midasanalytics.ai")
         pdf_success = await convert_report_to_pdf(
             final_report, 
             output_pdf_filename, 
             company_name=company_name,
-            chartjs_src=chartjs_src
+            chartjs_src=chartjs_src,
+            logo_path=logo_path,
+            website_url=website_url
         )
 
         if pdf_success:
