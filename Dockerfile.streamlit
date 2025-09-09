@@ -37,10 +37,17 @@ RUN useradd -m appuser && chown -R appuser:appuser /app
 # Create the generated_reports directory and set correct permissions
 RUN mkdir -p /app/generated_reports && chown -R appuser:appuser /app/generated_reports
 
+# Ensure logo file has correct permissions
+RUN chown appuser:appuser /app/midasanalyticsai_logo.jpeg 2>/dev/null || true
+
 USER appuser
 
 # Set environment variable for the local Chart.js
 ENV CHARTJS_SRC=file:///app/vendor/chart.min.js
+
+# Set environment variables for branding
+ENV MIDAS_LOGO_PATH=/app/midasanalyticsai_logo.jpeg
+ENV MIDAS_WEBSITE_URL=https://midasanalytics.ai
 
 # Expose the port Streamlit runs on
 EXPOSE 8501

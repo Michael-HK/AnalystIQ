@@ -42,16 +42,99 @@ footer_html = """
     width: 100%;
     padding: 0 12mm;
     display: flex;
-    justify-content: flex-end;  /* right-align */
+    justify-content: space-between;  /* space between page numbers and branding */
     align-items: center;
+  }
+  .footer-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .footer-center {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+  }
+  .footer-right {
+    display: flex;
+    align-items: center;
+  }
+  .footer-logo {
+    height: 12px;
+    width: auto;
+    max-width: 60px;
+  }
+  .footer-branding {
+    font-size: 9px;
+    color: #888;
+    text-decoration: none;
+  }
+  .footer-branding:hover {
+    color: #0066cc;
   }
   /* Avoid unexpected page scaling artifacts */
   .footer * { font-family: Arial, sans-serif; }
 </style>
 <div class="footer">
-  <span><span class="pageNumber"></span> of <span class="totalPages"></span></span>
+  <div class="footer-left">
+    <!-- Empty left section for balance -->
+  </div>
+  <div class="footer-center">
+    <span><span class="pageNumber"></span> of <span class="totalPages"></span></span>
+  </div>
+  <div class="footer-right">
+    <a href="https://midasanalytics.ai" class="footer-branding" target="_blank">Powered by Midas Analytics</a>
+  </div>
 </div>
 """
+
+def create_header_template(logo_path: Optional[str] = None, website_url: str = "https://midasanalytics.ai/") -> str:
+    """
+    Create a header template with optional logo and branding.
+    
+    Args:
+        logo_path: Optional path to logo image file
+        website_url: URL for the company website
+        
+    Returns:
+        HTML string for the header template
+    """
+    if logo_path and os.path.exists(logo_path):
+        # Convert logo to base64 for embedding
+        try:
+            with open(logo_path, 'rb') as logo_file:
+                logo_data = base64.b64encode(logo_file.read()).decode('utf-8')
+                logo_extension = os.path.splitext(logo_path)[1].lower()
+                mime_type = f"image/{logo_extension[1:]}" if logo_extension else "image/png"
+                logo_data_uri = f"data:{mime_type};base64,{logo_data}"
+                
+            return f"""
+            <div style="font-size:8px; width:100%; display: flex; justify-content: space-between; align-items: center; padding: 0 12mm;">
+              <div style="display: flex; align-items: center;">
+                <a href="{website_url}" target="_blank" style="text-decoration: none;">
+                  <img src="{logo_data_uri}" alt="Midas Analytics" style="height: 36px; width: auto; max-width: 180px;" />
+                </a>
+              </div>
+              <div style="color: #888; font-size: 9px;">
+                Investment Report
+              </div>
+            </div>
+            """
+        except Exception as e:
+            logger.warning(f"Failed to load logo from {logo_path}: {e}")
+    
+    # Fallback without logo
+    return f"""
+    <div style="font-size:8px; width:100%; display: flex; justify-content: space-between; align-items: center; padding: 0 12mm;">
+      <div style="color: #888; font-size: 9px;">
+        <a href="{website_url}" target="_blank" style="color: #888; text-decoration: none;">Midas Analytics</a>
+      </div>
+      <div style="color: #888; font-size: 9px;">
+        Investment Report
+      </div>
+    </div>
+    """
 
 def ensure_playwright_browser():
     try:
@@ -438,9 +521,9 @@ async def test_chart_color_rendering(chart_html: str, test_output_path: str = "/
             page = await browser.new_page(viewport={'width': 800, 'height': 600})
             
             await page.set_content(chart_doc)
-            await page.wait_for_function("typeof Chart !== 'undefined'", timeout=10000)
-            await page.wait_for_selector("canvas", timeout=10000)
-            await page.wait_for_timeout(2000)
+            await page.wait_for_function("typeof Chart !== 'undefined'", timeout=15000)
+            await page.wait_for_selector("canvas", timeout=15000)
+            await page.wait_for_timeout(3000)
             
             await page.screenshot(path=test_output_path, type='png')
             await browser.close()
@@ -460,7 +543,9 @@ async def convert_report_to_pdf(
     output_filename: str,
     *,
     company_name: str,
-    chartjs_src: Optional[str] = None
+    chartjs_src: Optional[str] = None,
+    logo_path: Optional[str] = None,
+    website_url: str = "https://midasanalytics.ai"
 ) -> bool:
     """
     Converts a Markdown string with embedded Chart.js blocks to a PDF using Playwright.
@@ -575,6 +660,7 @@ async def convert_report_to_pdf(
         html_doc = create_pdf_html_document(body_html, company_name)
 
         # 4. Generate PDF using Playwright
+        header_template = create_header_template(logo_path, website_url)
         await html_to_pdf_from_string_async(
             html_doc,
             output_filename,
@@ -588,6 +674,7 @@ async def convert_report_to_pdf(
             scale=1.0,
             prefer_css_page_size=True,
             wait_for_selector=None,
+            header_template=header_template,
             footer_html=footer_html,
             wait_time_ms=0,
             timeout_ms=45000,
@@ -611,7 +698,9 @@ async def convert_markdown_file_to_pdf(
     output_filename: str,
     *,
     company_name: str,
-    chartjs_src: Optional[str] = None
+    chartjs_src: Optional[str] = None,
+    logo_path: Optional[str] = None,
+    website_url: str = "https://midasanalytics.ai"
 ) -> bool:
     """
     Convenience wrapper to read a .md file and convert to PDF using Playwright.
@@ -622,7 +711,9 @@ async def convert_markdown_file_to_pdf(
         md,
         output_filename,
         company_name=company_name,
-        chartjs_src=chartjs_src
+        chartjs_src=chartjs_src,
+        logo_path=logo_path,
+        website_url=website_url
     )
 
 
@@ -661,6 +752,7 @@ async def html_to_pdf_from_string_async(
     scale: float = 1.0,
     prefer_css_page_size: bool = True,
     wait_for_selector: Optional[str] = None,
+    header_template: Optional[str] = None,
     footer_html: Optional[str] = None,
     wait_time_ms: int = 0,
     timeout_ms: int = 45000,
@@ -704,10 +796,10 @@ async def html_to_pdf_from_string_async(
             format=page_format,
             landscape=landscape,
             display_header_footer=True,
-            header_template="""
+            header_template=header_template or """
             <div style="font-size:8px; width:100%; text-align:right; color:#888;"></div>
             """,
-            footer_template="""
+            footer_template=footer_html or """
             <div style="font-size:10px; width:100%; text-align:right; color:#444; padding-right:20px;">
               Page <span class="pageNumber"></span> of <span class="totalPages"></span>
             </div>
