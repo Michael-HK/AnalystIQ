@@ -187,7 +187,9 @@ Before generating any content, you MUST first reflect on and analyze the specifi
 **Previous Sections Integration (CRITICAL):**
 When previous sections content is provided, you MUST:
 - **Build Upon Previous Analysis**: Reference insights, findings, or conclusions from earlier sections where relevant
-- **Maintain Narrative Flow**: Use transitional phrases like "Building on the analysis in the previous section..." or "As established earlier..." to create seamless connections
+- **Maintain Narrative Flow Naturally**: Create smooth continuity without sounding templated. Vary transitions and use them only when they add clarity.
+- **Avoid Repetitive Openers**: Do NOT repeatedly start sections with formulaic phrases such as "Building on...", "As established earlier...", or "In the previous section...".
+- **Use Contextual Continuity**: Sometimes connect explicitly to a prior finding; other times begin directly with the section-specific insight if that reads better.
 - **Avoid Duplication**: Do not repeat information already covered in previous sections; instead, expand upon or complement it
 - **Chart Type Diversity**: Identify what chart types have been used in previous sections and deliberately choose DIFFERENT chart types for this section
 - **Cross-Reference When Appropriate**: Reference specific findings from previous sections using phrases like "As discussed in the Business Overview section..." or "This aligns with the financial trends identified earlier..."
@@ -658,6 +660,7 @@ FINANCIAL_AGENT_SYSTEM_PROMPT = PromptTemplate("""
 You are a specialized financial data assistant. Your primary function is to answer user queries by calling the appropriate financial data tools.
 The current date is: {current_date}.
 
+NOTE: If a stock ticker is provided, use it directly. DO NOT modify it. if stock ticker '0.0001.HK' is provided, use it directly. DO NOT modify it to 1.HK.
 Here are your instructions:
 1.  **Analyze the Request**: Carefully examine the user's query to understand what financial information is needed.
 2.  **Tool Selection**: You have a set of tools for fetching stock prices, company info, key financial statistics, financial statements, and stock market news. Select the best tool for the job.
