@@ -42,7 +42,7 @@ footer_html = """
     width: 100%;
     padding: 0 12mm;
     display: flex;
-    justify-content: space-between;  /* space between page numbers and branding */
+    justify-content: space-between;
     align-items: center;
   }
   .footer-left {
@@ -84,12 +84,12 @@ footer_html = """
     <span><span class="pageNumber"></span> of <span class="totalPages"></span></span>
   </div>
   <div class="footer-right">
-    <a href="https://midasanalytics.ai" class="footer-branding" target="_blank">Powered by Midas Analytics</a>
+    <a href="https://personaly.ai" class="footer-branding" target="_blank">Powered by AgentInvest</a>
   </div>
 </div>
 """
 
-def create_header_template(logo_path: Optional[str] = None, website_url: str = "https://midasanalytics.ai/") -> str:
+def create_header_template(logo_path: Optional[str] = None, website_url: str = "https://personaly.ai/") -> str:
     """
     Create a header template with optional logo and branding.
     
@@ -113,7 +113,7 @@ def create_header_template(logo_path: Optional[str] = None, website_url: str = "
             <div style="font-size:8px; width:100%; display: flex; justify-content: space-between; align-items: center; padding: 0 12mm;">
               <div style="display: flex; align-items: center;">
                 <a href="{website_url}" target="_blank" style="text-decoration: none;">
-                  <img src="{logo_data_uri}" alt="Midas Analytics" style="height: 36px; width: auto; max-width: 180px;" />
+                  <img src="{logo_data_uri}" alt="Company Logo" style="height: 36px; width: auto; max-width: 180px;" />
                 </a>
               </div>
               <div style="color: #888; font-size: 9px;">
@@ -128,7 +128,7 @@ def create_header_template(logo_path: Optional[str] = None, website_url: str = "
     return f"""
     <div style="font-size:8px; width:100%; display: flex; justify-content: space-between; align-items: center; padding: 0 12mm;">
       <div style="color: #888; font-size: 9px;">
-        <a href="{website_url}" target="_blank" style="color: #888; text-decoration: none;">Midas Analytics</a>
+        <a href="{website_url}" target="_blank" style="color: #888; text-decoration: none;">AgentInvest</a>
       </div>
       <div style="color: #888; font-size: 9px;">
         Investment Report
@@ -545,7 +545,7 @@ async def convert_report_to_pdf(
     company_name: str,
     chartjs_src: Optional[str] = None,
     logo_path: Optional[str] = None,
-    website_url: str = "https://midasanalytics.ai"
+    website_url: str = "https://personaly.ai"
 ) -> bool:
     """
     Converts a Markdown string with embedded Chart.js blocks to a PDF using Playwright.
@@ -700,7 +700,7 @@ async def convert_markdown_file_to_pdf(
     company_name: str,
     chartjs_src: Optional[str] = None,
     logo_path: Optional[str] = None,
-    website_url: str = "https://midasanalytics.ai"
+    website_url: str = "https://personaly.ai"
 ) -> bool:
     """
     Convenience wrapper to read a .md file and convert to PDF using Playwright.
