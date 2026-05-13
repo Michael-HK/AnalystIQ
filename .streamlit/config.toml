@@ -1,0 +1,13 @@
+[server]
+# Reduce filesystem watch overhead to prevent startup stalls in large repos.
+folderWatchBlacklist = [
+  ".git",
+  ".venv",
+  "venv",
+  "myenv",
+  "__pycache__",
+  "generated_reports"
+]
+
+# "poll" is often more stable than default watchers on mixed Windows/WSL mounts.
+fileWatcherType = "poll"

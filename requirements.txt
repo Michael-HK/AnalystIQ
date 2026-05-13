@@ -10,3 +10,4 @@ redis
 tenacity
 lxml_html_clean
 playwright>=1.40.0
+python-pptx>=1.0.2

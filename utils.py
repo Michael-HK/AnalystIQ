@@ -593,8 +593,13 @@ async def convert_report_to_pdf(
                     await page.wait_for_function("typeof Chart !== 'undefined'", timeout=15000)
                     logger.info(f"Chart.js loaded for chart {len(image_paths)}")
                     
-                    # Wait for any canvas elements to be present
-                    await page.wait_for_selector("canvas", timeout=15000)
+                    # Wait for chart canvas when available; some blocks may render static HTML only.
+                    try:
+                        await page.wait_for_selector("canvas", timeout=15000)
+                    except PlaywrightTimeoutError:
+                        logger.warning(
+                            "Chart canvas was not detected in time; capturing fallback screenshot."
+                        )
                     
                     # Additional wait for Chart.js rendering and animations
                     await page.wait_for_timeout(3000)

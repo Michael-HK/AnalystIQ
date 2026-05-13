@@ -30,7 +30,7 @@ class RedisCacheManager:
             self.client.ping()
             logger.info("Successfully connected to Redis.")
         except redis.exceptions.ConnectionError as e:
-            logger.error(f"Could not connect to Redis: {e}. Caching will be disabled.")
+            logger.warning(f"Could not connect to Redis: {e}. Caching will be disabled.")
             self.client = None
         self.ttl = ttl_seconds
 
