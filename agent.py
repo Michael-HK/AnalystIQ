@@ -10,8 +10,8 @@ import re
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from tenacity import retry, wait_exponential, stop_after_attempt
-import html
 from dotenv import load_dotenv
+from pydantic import BaseModel, Field
 
 from prompts import (
     GENERATE_REPORT_STRUCTURE_PROMPT,
@@ -21,8 +21,6 @@ from prompts import (
     GENERATE_EXECUTIVE_SUMMARY_PROMPT,
     CONTENT_GENERATION_SYSTEM_PROMPT_v2,
     CONTENT_GENERATION_USER_PROMPT_v3,
-    POLISH_REPORT_SYSTEM_PROMPT,
-    POLISH_REPORT_USER_PROMPT,
 )
 from llama_index.core.chat_engine.types import AgentChatResponse
 from tools.web_search import WebSearchTool, parallel_search
@@ -50,6 +48,136 @@ def _load_environment() -> None:
 
 _load_environment()
 
+
+class SectionViolation(BaseModel):
+    """Structured violation emitted by section evaluator."""
+
+    violation_type: str = Field(
+        default="",
+        description=(
+            "Machine-readable violation label, for example DUPLICATE_SECTION_HEADING, "
+            "CHART_WITHOUT_DATA, INCORRECT_FORMAT, or CHART_WRAPPER_INCOMPLETE."
+        ),
+    )
+    evidence: str = Field(
+        default="",
+        description="Short snippet or description proving where the violation occurred.",
+    )
+    fix_instruction: str = Field(
+        default="",
+        description="Actionable remediation guidance for section regeneration.",
+    )
+
+
+class SectionGenerationEvaluationResult(BaseModel):
+    """Structured evaluation result for a generated report section."""
+
+    has_violations: bool = Field(
+        default=False,
+        description="True when one or more structural/rendering violations are detected.",
+    )
+    violations: List[SectionViolation] = Field(
+        default_factory=list,
+        description="Detailed list of section violations that must be fixed.",
+    )
+    regeneration_feedback: str = Field(
+        default="",
+        description="Concise corrective instructions to feed directly into the regeneration prompt.",
+    )
+    evaluator_summary: str = Field(
+        default="",
+        description="One-line summary of the evaluator decision.",
+    )
+
+
+class DeckMetricCard(BaseModel):
+    label: str = Field(
+        default="",
+        description="Metric label shown on the slide card, e.g., 'Revenue Growth'.",
+    )
+    value: str = Field(
+        default="",
+        description="Primary metric value text, e.g., '12.4% YoY'.",
+    )
+    delta: str = Field(
+        default="",
+        description="Optional context or directional delta, e.g., '+120 bps vs FY23'.",
+    )
+
+
+class DeckSlideSpec(BaseModel):
+    layout_type: str = Field(
+        default="two_column",
+        description=(
+            "Preferred slide layout type. Expected values: thesis, metrics_dashboard, "
+            "chart_focus, two_column, risk_matrix, or closing_recommendation."
+        ),
+    )
+    section_label: str = Field(
+        default="",
+        description="Short section tag displayed as a small header on the slide.",
+    )
+    headline: str = Field(
+        default="",
+        description="Primary slide headline focused on decision-relevant insight.",
+    )
+    takeaway: str = Field(
+        default="",
+        description="One-sentence key takeaway for executives.",
+    )
+    bullets: List[str] = Field(
+        default_factory=list,
+        description="Concise supporting bullets for the slide (ideally up to three).",
+    )
+    metrics: List[DeckMetricCard] = Field(
+        default_factory=list,
+        description="Optional metric cards to highlight key numerical indicators.",
+    )
+    chart_ref: Optional[int] = Field(
+        default=None,
+        description="Zero-based index of an existing report chart to reuse, or null if none.",
+    )
+    visual_emphasis: str = Field(
+        default="",
+        description="Short visual direction for renderer emphasis and composition.",
+    )
+    speaker_notes: str = Field(
+        default="",
+        description="Optional presenter notes for the slide.",
+    )
+
+
+class VisualDeckSpec(BaseModel):
+    deck_title: str = Field(
+        default="",
+        description="Overall deck title suitable for investment committee review.",
+    )
+    subtitle: str = Field(
+        default="",
+        description="Supporting subtitle containing context such as ticker or date framing.",
+    )
+    audience: str = Field(
+        default="Investment committee",
+        description="Intended audience label for deck framing.",
+    )
+    visual_theme: str = Field(
+        default="Institutional",
+        description="High-level style theme name used by the slide renderer.",
+    )
+    investment_thesis: str = Field(
+        default="",
+        description="Concise thesis statement guiding the deck narrative.",
+    )
+    recommendation: str = Field(
+        default="",
+        description="Primary action recommendation for decision makers.",
+    )
+    slides: List[DeckSlideSpec] = Field(
+        default_factory=list,
+        description="Ordered slide specifications for the rendered presentation.",
+    )
+
+
 class AgentInvest:
     def __init__(self, verbose_agent: bool = False):
         self.current_date = datetime.now().strftime("%Y-%m-%d")
@@ -64,7 +192,7 @@ class AgentInvest:
             model="xiaomi/mimo-v2.5",
             api_key=os.getenv("OPENROUTER_API_KEY"),
             context_window=100000,
-            temperature=1,
+            temperature=0.1,
             max_tokens=self.max_tokens
         )
 
@@ -72,7 +200,7 @@ class AgentInvest:
             model="xiaomi/mimo-v2.5",
             api_key=os.getenv("OPENROUTER_API_KEY"),
             context_window=100000,
-            temperature=1,
+            temperature=0.1,
             max_tokens=self.max_tokens
         )
 
@@ -302,30 +430,6 @@ Rules:
         return formatted_context.strip()
 
     @retry(wait=wait_exponential(multiplier=1, min=2, max=60), stop=stop_after_attempt(3))
-    async def generate_section(
-        self,
-        section_title: str,
-        company_name: str,
-        context: str,
-        custom_instruction: Optional[str] = None,
-    ) -> str:
-        system_prompt = CONTENT_GENERATION_SYSTEM_PROMPT_v2.format(current_date=self.current_date)
-        user_prompt = CONTENT_GENERATION_USER_PROMPT_v3.format(
-            section_title=section_title,
-            company_name=company_name,
-            context=context
-        )
-        user_prompt += self._build_instruction_block(custom_instruction)
-        
-        messages = [
-            ChatMessage(role=MessageRole.SYSTEM, content=system_prompt),
-            ChatMessage(role=MessageRole.USER, content=user_prompt),
-        ]
-        
-        response = await self.llm.achat(messages)
-        return response.message.content
-
-    @retry(wait=wait_exponential(multiplier=1, min=2, max=60), stop=stop_after_attempt(3))
     async def generate_section_v3(
         self,
         section_title: str,
@@ -333,6 +437,9 @@ Rules:
         context: str,
         previous_content: str = "",
         custom_instruction: Optional[str] = None,
+        evaluator_feedback: Optional[str] = None,
+        penalized_previous_draft: Optional[str] = None,
+        regeneration_mode: bool = False,
     ) -> str:
         """
         NEW VERSION: Content-aware section generation with enhanced formatting and chart variety.
@@ -346,6 +453,18 @@ Rules:
             context=context,
             previous_content=previous_content
         )
+        if regeneration_mode:
+            user_prompt += (
+                "\n\nEvaluator feedback from the previous draft (mandatory fixes):\n"
+                f"{(evaluator_feedback or 'Fix structural formatting issues and ensure complete, clean section output.').strip()}\n"
+            )
+            if penalized_previous_draft:
+                user_prompt += (
+                    "\nPrevious failed draft (apply minimal edits where possible):\n"
+                    "---\n"
+                    f"{penalized_previous_draft[:12000]}\n"
+                    "---\n"
+                )
         user_prompt += self._build_instruction_block(custom_instruction)
         
         messages = [
@@ -356,21 +475,217 @@ Rules:
         response = await self.llm.achat(messages)
         return response.message.content
 
-    @retry(wait=wait_exponential(multiplier=1, min=2, max=60), stop=stop_after_attempt(3))
-    async def polish_report(self, report_content: str, company_name: str) -> str:
+    def _strip_section_title_from_content(self, section_content: str, section_title: str) -> str:
+        """Remove duplicated section headings from generated section body."""
+        if not section_content:
+            return ""
 
-        system_prompt = POLISH_REPORT_SYSTEM_PROMPT.format(current_date=self.current_date)
-        
-        user_prompt = POLISH_REPORT_USER_PROMPT.format(
-            report_content=report_content,
-            company_name=company_name
+        lines = section_content.splitlines()
+        if not lines:
+            return section_content
+
+        normalized_title = re.sub(r"\s+", " ", section_title).strip().lower()
+
+        def _clean_prefix(line: str) -> Optional[str]:
+            stripped = line.strip()
+            if not stripped:
+                return None
+
+            heading_match = re.match(r"^#{1,6}\s*(.+)$", stripped)
+            candidate = heading_match.group(1).strip() if heading_match else stripped
+            candidate_norm = re.sub(r"\s+", " ", candidate).strip().lower()
+
+            if candidate_norm.startswith(normalized_title):
+                remainder = candidate[len(section_title):].lstrip(" :-")
+                return remainder
+
+            return None
+
+        first_idx = 0
+        while first_idx < len(lines) and not lines[first_idx].strip():
+            first_idx += 1
+
+        if first_idx >= len(lines):
+            return section_content.strip()
+
+        remainder = _clean_prefix(lines[first_idx])
+        if remainder is None:
+            return section_content.strip()
+
+        rebuilt_lines: List[str] = []
+        if remainder:
+            rebuilt_lines.append(remainder)
+        rebuilt_lines.extend(lines[first_idx + 1 :])
+        return "\n".join(rebuilt_lines).strip()
+
+    def _run_deterministic_section_checks(
+        self,
+        section_title: str,
+        section_content: str,
+    ) -> SectionGenerationEvaluationResult:
+        """Fast structural checks before LLM evaluator."""
+        violations: List[SectionViolation] = []
+        lines = section_content.splitlines()
+        first_non_empty = next((line.strip() for line in lines if line.strip()), "")
+
+        if first_non_empty.startswith("#"):
+            violations.append(
+                SectionViolation(
+                    violation_type="DUPLICATE_SECTION_HEADING",
+                    evidence=first_non_empty[:220],
+                    fix_instruction=(
+                        f"Do not include the section title '{section_title}' in the body. "
+                        "Start directly with analysis paragraphs."
+                    ),
+                )
+            )
+
+        trailing_token = next((line.strip() for line in reversed(lines) if line.strip()), "")
+        if trailing_token.lower() in {"html", "python", "json", "javascript"}:
+            violations.append(
+                SectionViolation(
+                    violation_type="DANGLING_CODE_LANGUAGE_TOKEN",
+                    evidence=trailing_token,
+                    fix_instruction="Remove dangling language tokens and ensure fenced code blocks are complete.",
+                )
+            )
+
+        if section_content.count("```") % 2 != 0:
+            violations.append(
+                SectionViolation(
+                    violation_type="UNCLOSED_CODE_FENCE",
+                    evidence="Odd number of triple-backtick markers detected.",
+                    fix_instruction="Close all code fences and keep generated markdown syntactically complete.",
+                )
+            )
+
+        fenced_blocks = re.findall(
+            r"```([a-zA-Z0-9_-]*)\n(.*?)\n```",
+            section_content,
+            flags=re.DOTALL,
         )
-        messages = [
-            ChatMessage(role=MessageRole.SYSTEM, content=system_prompt),
-            ChatMessage(role=MessageRole.USER, content=user_prompt),
-        ]
-        response = await self.llm2.achat(messages)
-        return response.message.content
+        chart_blocks = []
+        for lang, body in fenced_blocks:
+            if "new Chart(" in body or "<canvas" in body:
+                chart_blocks.append((lang.strip().lower(), body))
+
+        if "new Chart(" in section_content and not chart_blocks:
+            violations.append(
+                SectionViolation(
+                    violation_type="CHART_WITHOUT_PROPER_WRAPPER",
+                    evidence="Found chart code but not inside a fenced code block.",
+                    fix_instruction=(
+                        "Wrap chart rendering code in a complete ```html ... ``` block "
+                        "with canvas and script for extraction/rendering."
+                    ),
+                )
+            )
+
+        for lang, body in chart_blocks:
+            if lang != "html":
+                violations.append(
+                    SectionViolation(
+                        violation_type="CHART_WRAPPER_NOT_HTML",
+                        evidence=f"Chart block language '{lang or 'none'}' is not html.",
+                        fix_instruction="Use ```html wrappers for chart code to support rendering extraction.",
+                    )
+                )
+            if "<canvas" not in body or "<script" not in body:
+                violations.append(
+                    SectionViolation(
+                        violation_type="CHART_WRAPPER_INCOMPLETE",
+                        evidence="Chart block is missing <canvas> or <script> wrapper parts.",
+                        fix_instruction="Provide complete chart wrappers with both <canvas> and <script> tags.",
+                    )
+                )
+            if re.search(r"labels\s*:\s*\[\s*\]", body) or re.search(r"datasets\s*:\s*\[\s*\]", body):
+                violations.append(
+                    SectionViolation(
+                        violation_type="EMPTY_CHART_CONTAINER",
+                        evidence="Chart block contains empty labels or datasets arrays.",
+                        fix_instruction="Populate labels and datasets with real non-empty values, or remove the chart.",
+                    )
+                )
+            if re.search(r"data\s*:\s*\[\s*\]", body):
+                violations.append(
+                    SectionViolation(
+                        violation_type="CHART_WITHOUT_DATA",
+                        evidence="Chart dataset contains an empty data array.",
+                        fix_instruction="Ensure every dataset has non-empty data values before rendering.",
+                    )
+                )
+
+        if violations:
+            feedback = " ".join(v.fix_instruction for v in violations)
+            return SectionGenerationEvaluationResult(
+                has_violations=True,
+                violations=violations,
+                regeneration_feedback=feedback.strip(),
+                evaluator_summary="Deterministic structural checks found format issues.",
+            )
+
+        return SectionGenerationEvaluationResult(
+            has_violations=False,
+            violations=[],
+            regeneration_feedback="",
+            evaluator_summary="No deterministic structural issues detected.",
+        )
+
+    async def _evaluate_section_generation(
+        self,
+        section_title: str,
+        section_content: str,
+    ) -> SectionGenerationEvaluationResult:
+        """Evaluate section quality with deterministic + structured LLM checks."""
+        deterministic_eval = self._run_deterministic_section_checks(
+            section_title=section_title,
+            section_content=section_content,
+        )
+        if deterministic_eval.has_violations:
+            return deterministic_eval
+
+        eval_prompt = f"""
+You are a strict quality evaluator for financial report sections.
+Provide a structured evaluation response using the model fields supplied by the caller.
+
+Check ONLY structural output risks that break readability/rendering:
+1) Duplicate section heading appears in section body.
+2) Heading/content collision on same line causing malformed display.
+3) Unclosed or dangling markdown code fences.
+4) Stray code-language tokens (e.g., standalone 'html') outside code fences.
+5) Severely collapsed formatting that likely indicates generation corruption.
+6) Empty chart container (e.g., labels: [] or datasets: []).
+7) Chart dataset without data (e.g., data: []).
+8) Chart code not wrapped with proper rendering/extraction wrapper (must be complete ```html``` with canvas+script).
+
+Section title: {section_title}
+Section content:
+---
+{section_content[:20000]}
+---
+"""
+
+        try:
+            structured_llm = self.llm.as_structured_llm(output_cls=SectionGenerationEvaluationResult)
+            messages = [ChatMessage(role=MessageRole.USER, content=eval_prompt)]
+            response = await structured_llm.achat(messages)
+
+            if hasattr(response, "raw") and isinstance(response.raw, SectionGenerationEvaluationResult):
+                return response.raw
+            if hasattr(response, "message") and getattr(response.message, "content", None):
+                parsed = self._parse_llm_json_output(response.message.content)
+                if isinstance(parsed, dict):
+                    return SectionGenerationEvaluationResult.model_validate(parsed)
+        except Exception:
+            # Fall through to a non-blocking default to avoid stopping report generation.
+            pass
+
+        return SectionGenerationEvaluationResult(
+            has_violations=False,
+            violations=[],
+            regeneration_feedback="",
+            evaluator_summary="Evaluator fallback: no blocking violations detected.",
+        )
 
     def _extract_cited_numbers(self, report_content: str) -> List[int]:
         import re
@@ -378,20 +693,6 @@ Rules:
         pattern = r'\[(\d+)\]'
         # Find all matches, convert them to int, and return a sorted list of unique numbers
         return sorted(list(set(map(int, re.findall(pattern, report_content)))))
-    
-    def _generate_references_section_v1(self, cited_numbers: List[int]) -> str:
-        if not cited_numbers:
-            return ""
-        
-        references_content = "\n\n---\n\n## References\n\n"
-        for num in cited_numbers:
-            source_info = self.source_map.get(num)
-            if source_info:
-                title_part = f" ({source_info['title']})" if source_info.get('title') else ""
-                # Use proper markdown formatting for better PDF rendering
-                references_content += f"[{num}] {title_part} url: {source_info['url']}\n"
-        
-        return references_content
 
     def _generate_references_section(self, cited_numbers: List[int]) -> str:
         """
@@ -434,72 +735,6 @@ Rules:
         print(f"DEBUG: Generated references section with {valid_references_count} valid references out of {len(unique_sorted)} cited")
 
         return "\n".join(references_md)
-
-    def _generate_references_section_v3(self, cited_numbers: List[int]) -> str:
-        """
-        Build a well-formatted References section for Markdown -> HTML -> PDF.
-
-        Behavior:
-        - With title: [N] (Title) link
-        - Without title: [N] https://example.com (clickable, URL is visible as the anchor text)
-        """
-        if not cited_numbers:
-            return ""
-
-        unique_sorted = sorted(set(cited_numbers), key=int)
-
-        parts = []
-        parts.append("\n\n---\n")
-        parts.append('## References {#references}\n\n')
-        parts.append('<ul id="references-list">')
-
-        for num in unique_sorted:
-            source_info = self.source_map.get(num)
-            if not source_info:
-                continue
-
-            url = (source_info.get("url") or "").strip()
-            if not url:
-                continue
-
-            title = (source_info.get("title") or "").strip()
-
-            href_escaped = html.escape(url, quote=True)
-            title_escaped = html.escape(title)
-
-            if title_escaped:
-                # Show short label "link" when title exists
-                link_html = f'<a href="{href_escaped}">link</a>'
-                title_part = f" ({title_escaped})"
-                item_html = f'<li><b>[{num}]</b>{title_part} {link_html}</li>'
-            else:
-                # No title: make the URL itself the clickable text
-                url_text = html.escape(url)
-                link_html = f'<a href="{href_escaped}">{url_text}</a>'
-                item_html = f'<li><b>[{num}]</b> {link_html}</li>'
-
-            parts.append(item_html)
-
-        parts.append("</ul>\n")
-
-        return "".join(parts)
-
-    def _generate_title_page(self, company_name: str) -> str:
-        """
-        Generate a professional title page for the investment report.
-        NOTE: This method is deprecated - using LLM-generated opening section as title page instead.
-        """
-        title_page = f"""# Investment Report for {company_name}
-
-**Prepared by AgentInvest**  
-**Date: {self.current_date}**
-
----
-
-*This report provides a comprehensive analysis of {company_name} for investment decision-making purposes. The analysis includes business fundamentals, financial performance, market positioning, growth prospects, valuation assessment, and risk factors to support informed investment decisions.*
-
----"""
-        return title_page
 
     def _generate_table_of_contents(self, report_structure: List[str]) -> str:
         """
@@ -705,133 +940,6 @@ Report content:
         if parsed is None:
             parsed = self._parse_llm_json_output(response.text)
         return self._normalize_key_points(parsed if parsed is not None else response.text)
-
-    def _normalize_presentation_plan(self, value: Any) -> List[Dict[str, Any]]:
-        """Normalize LLM slide-plan output into a safe list of concise slide specs."""
-        raw_slides: List[Dict[str, Any]] = []
-        if isinstance(value, dict):
-            slides = value.get("slides")
-            if isinstance(slides, list):
-                raw_slides = [item for item in slides if isinstance(item, dict)]
-        elif isinstance(value, list):
-            raw_slides = [item for item in value if isinstance(item, dict)]
-
-        normalized: List[Dict[str, Any]] = []
-        for item in raw_slides[:8]:
-            title = str(item.get("title", "")).strip()[:80]
-            if not title:
-                continue
-
-            subtitle = str(item.get("subtitle", "")).strip()[:120]
-            bullets_value = item.get("bullets", [])
-            bullets: List[str] = []
-            if isinstance(bullets_value, list):
-                for bullet in bullets_value[:5]:
-                    clean = str(bullet).strip()
-                    if clean:
-                        bullets.append(clean[:140])
-            use_chart = bool(item.get("use_chart", False))
-
-            if not bullets:
-                continue
-            normalized.append(
-                {
-                    "title": title,
-                    "subtitle": subtitle,
-                    "bullets": bullets,
-                    "use_chart": use_chart,
-                }
-            )
-        return normalized
-
-    @retry(wait=wait_exponential(multiplier=1, min=2, max=60), stop=stop_after_attempt(2))
-    async def generate_presentation_outline(
-        self,
-        company_name: str,
-        ticker: str,
-        report_markdown: str,
-        executive_summary: str,
-        key_points: List[str],
-    ) -> List[Dict[str, Any]]:
-        """Agentic workflow: generate an executive-quality slide outline for PPT export."""
-        key_points_text = "\n".join([f"- {point}" for point in (key_points or [])[:5]])
-        report_excerpt = (report_markdown or "")[:22000]
-        prompt = f"""
-You are a buy-side investment presentation strategist.
-Create a concise, executive-quality slide outline for an editable PowerPoint deck.
-
-Requirements:
-- Total slides for this outline: 5 to 8 (title/closing will be added separately by the app).
-- Audience: portfolio managers, investment committees, hedge fund analysts.
-- Focus on decision-useful insights, not narrative prose.
-- Keep bullets concise: max 14 words per bullet.
-- 3 to 5 bullets per slide.
-- Use professional slide titles.
-- Mark use_chart=true only where a chart materially improves understanding.
-- Output valid JSON only.
-
-Output schema:
-{{
-  "slides": [
-    {{
-      "title": "string",
-      "subtitle": "string (optional)",
-      "bullets": ["bullet 1", "bullet 2", "bullet 3"],
-      "use_chart": true
-    }}
-  ]
-}}
-
-Company: {company_name}
-Ticker: {ticker}
-Date: {self.current_date}
-
-Executive summary:
----
-{executive_summary}
----
-
-Top key points:
-{key_points_text}
-
-Report excerpt:
----
-{report_excerpt}
----
-""".strip()
-        response = await self.llm.acomplete(prompt)
-        parsed = self._parse_llm_json_output(response.text)
-        if parsed is None:
-            parsed = self._parse_llm_python_output(response.text)
-
-        normalized = self._normalize_presentation_plan(parsed if parsed is not None else {})
-        if normalized:
-            return normalized
-
-        # Fallback: deterministic concise outline
-        fallback_slides: List[Dict[str, Any]] = []
-        if key_points:
-            fallback_slides.append(
-                {
-                    "title": "Investment Thesis",
-                    "subtitle": "Core view and expected value drivers",
-                    "bullets": [str(p).strip()[:120] for p in key_points[:5] if str(p).strip()],
-                    "use_chart": True,
-                }
-            )
-        fallback_slides.append(
-            {
-                "title": "Catalysts and Monitoring Plan",
-                "subtitle": "What to watch over the next 6-12 months",
-                "bullets": [
-                    "Track revenue trend versus consensus expectations",
-                    "Monitor margin direction and cost discipline",
-                    "Watch valuation re-rating catalysts and downside risks",
-                ],
-                "use_chart": False,
-            }
-        )
-        return fallback_slides[:8]
 
     def _deck_plain_text(self, text: str, max_chars: int = 180) -> str:
         """Clean markdown-ish report text for concise deck fields."""
@@ -1114,29 +1222,7 @@ Design principles:
 - Use chart_ref only when a chart is essential. Available chart_ref values are 0 to {max(chart_count - 1, 0)}.
 - If no chart is needed, set chart_ref to null.
 - Do not invent financial numbers. Use metrics only if supported by the report.
-- Output valid JSON only.
-
-Schema:
-{{
-  "deck_title": "string",
-  "subtitle": "string",
-  "audience": "Investment committee",
-  "visual_theme": "Institutional",
-  "investment_thesis": "one concise thesis",
-  "recommendation": "one concise action recommendation",
-  "slides": [
-    {{
-      "layout_type": "thesis|metrics_dashboard|chart_focus|two_column|risk_matrix|closing_recommendation",
-      "section_label": "short label",
-      "headline": "slide headline",
-      "takeaway": "one sentence takeaway",
-      "bullets": ["short bullet", "short bullet"],
-      "metrics": [{{"label": "Metric", "value": "Value", "delta": "Optional context"}}],
-      "chart_ref": 0,
-      "visual_emphasis": "short design direction"
-    }}
-  ]
-}}
+- Return structured content aligned with the provided output model.
 
 Slide count: 5 to 7 slides, excluding the renderer title slide.
 Company: {company_name}
@@ -1157,8 +1243,25 @@ Report excerpt:
 {report_excerpt}
 ---
 """.strip()
-        response = await self.llm.acomplete(prompt)
-        parsed = self._parse_deck_json_quietly(response.text)
+        parsed: Any = None
+        try:
+            structured_llm = self.llm.as_structured_llm(output_cls=VisualDeckSpec)
+            messages = [ChatMessage(role=MessageRole.USER, content=prompt)]
+            response = await structured_llm.achat(messages)
+            if hasattr(response, "raw") and isinstance(response.raw, VisualDeckSpec):
+                parsed = response.raw.model_dump()
+            elif hasattr(response, "message") and getattr(response.message, "content", None):
+                raw_content = response.message.content
+                raw_parsed = self._parse_deck_json_quietly(raw_content)
+                if isinstance(raw_parsed, dict):
+                    parsed = VisualDeckSpec.model_validate(raw_parsed).model_dump()
+        except Exception:
+            parsed = None
+
+        if parsed is None:
+            response = await self.llm.acomplete(prompt)
+            parsed = self._parse_deck_json_quietly(response.text)
+
         return self._normalize_visual_deck_spec(
             parsed,
             company_name=company_name,
@@ -1294,14 +1397,60 @@ Report excerpt:
         previous_sections_content = ""
         for i, section_title in enumerate(report_structure):
             ensure_not_cancelled()
+            max_generation_attempts = 3
+            evaluator_feedback: Optional[str] = None
+            penalized_previous_draft: Optional[str] = None
+            section_content = ""
+            for attempt in range(1, max_generation_attempts + 1):
+                ensure_not_cancelled()
+                update_progress(
+                    f"📝 Generating section {i+1}/{len(report_structure)} (attempt {attempt}/{max_generation_attempts}): {section_title}"
+                )
+                section_content = await self.generate_section_v3(
+                    section_title,
+                    company_name,
+                    context,
+                    previous_sections_content,
+                    rewritten_instruction,
+                    evaluator_feedback=evaluator_feedback,
+                    penalized_previous_draft=penalized_previous_draft,
+                    regeneration_mode=(attempt > 1),
+                )
+                section_content = self._strip_section_title_from_content(section_content, section_title)
+                evaluation = await self._evaluate_section_generation(
+                    section_title=section_title,
+                    section_content=section_content,
+                )
+                if not evaluation.has_violations:
+                    if attempt > 1:
+                        update_progress(
+                            f"✅ Section {i+1}/{len(report_structure)} passed quality check on attempt {attempt}/{max_generation_attempts}: {section_title}"
+                        )
+                    break
 
-            section_content = await self.generate_section_v3(
-                section_title, 
-                company_name, 
-                context, 
-                previous_sections_content,
-                rewritten_instruction,
-            )
+                if attempt == max_generation_attempts:
+                    update_progress(
+                        "⚠️ Section still has formatting issues after retries; using latest draft",
+                        {
+                            "section": section_title,
+                            "summary": evaluation.evaluator_summary,
+                        },
+                    )
+                    break
+
+                evaluator_feedback = (
+                    evaluation.regeneration_feedback
+                    or "Fix all structural formatting issues and return a clean section body."
+                )
+                penalized_previous_draft = section_content
+                update_progress(
+                    (
+                        f"♻️ Section {i+1}/{len(report_structure)} failed quality check; "
+                        f"retrying attempt {attempt+1}/{max_generation_attempts}: {section_title}"
+                    ),
+                    evaluator_feedback[:300],
+                )
+
             generated_contents.append(section_content)
         #    section_generation_tasks = [
         #        self.generate_section_v3(section_title, company_name, context, previous_sections_content)
@@ -1462,68 +1611,6 @@ Report excerpt:
         
         return final_report
 
-    def regenerate_context_from_cache(self, ticker: str) -> Optional[str]:
-        """
-        Regenerate the formatted context from cached raw results.
-        Useful when you want to change formatting logic without re-fetching data.
-        
-        Args:
-            ticker (str): The stock ticker symbol.
-            
-        Returns:
-            Optional[str]: The regenerated context, or None if no cached data exists.
-        """
-        cached_data = self.cache_manager.get_cached_data(ticker)
-        if not cached_data:
-            return None
-            
-        web_results = cached_data.get('web_results', [])
-        financial_results = cached_data.get('financial_results', [])
-        financial_queries = cached_data.get('financial_queries', [])
-        
-        if not web_results and not financial_results:
-            return None
-            
-        # Regenerate context with current formatting logic
-        new_context = self._format_context(web_results, financial_results, financial_queries)
-        
-        # Update cache with new context while keeping raw results
-        self.cache_manager.set_cached_data(
-            ticker, 
-            cached_data['company_name'], 
-            cached_data['structure'], 
-            new_context,
-            web_results, 
-            financial_results, 
-            cached_data.get('web_queries', []), 
-            financial_queries
-        )
-        
-        return new_context
-
-    def get_cached_raw_results(self, ticker: str) -> Optional[Dict[str, Any]]:
-        """
-        Get the raw cached web and financial results for a ticker.
-        
-        Args:
-            ticker (str): The stock ticker symbol.
-            
-        Returns:
-            Optional[Dict[str, Any]]: Dictionary containing raw results, or None if no cached data exists.
-        """
-        cached_data = self.cache_manager.get_cached_data(ticker)
-        if not cached_data:
-            return None
-            
-        return {
-            'web_results': cached_data.get('web_results', []),
-            'financial_results': cached_data.get('financial_results', []),
-            'web_queries': cached_data.get('web_queries', []),
-            'financial_queries': cached_data.get('financial_queries', []),
-            'company_name': cached_data.get('company_name'),
-            'report_structure': cached_data.get('structure', [])
-        }
-
     async def run_v3(
         self,
         ticker: str,
@@ -1631,16 +1718,59 @@ Report excerpt:
         
         # Process sections sequentially to build context awareness
         for i, section_title in enumerate(report_structure):
-            update_progress(f"📝 Generating section {i+1}/{len(report_structure)}: {section_title}")
-            
-            section_content = await self.generate_section_v3(
-                section_title, 
-                company_name, 
-                context, 
-                previous_sections_content,
-                rewritten_instruction,
-            )
-            
+            max_generation_attempts = 3
+            evaluator_feedback: Optional[str] = None
+            penalized_previous_draft: Optional[str] = None
+            section_content = ""
+            for attempt in range(1, max_generation_attempts + 1):
+                update_progress(
+                    f"📝 Generating section {i+1}/{len(report_structure)} (attempt {attempt}/{max_generation_attempts}): {section_title}"
+                )
+                section_content = await self.generate_section_v3(
+                    section_title,
+                    company_name,
+                    context,
+                    previous_sections_content,
+                    rewritten_instruction,
+                    evaluator_feedback=evaluator_feedback,
+                    penalized_previous_draft=penalized_previous_draft,
+                    regeneration_mode=(attempt > 1),
+                )
+                section_content = self._strip_section_title_from_content(section_content, section_title)
+                evaluation = await self._evaluate_section_generation(
+                    section_title=section_title,
+                    section_content=section_content,
+                )
+                if not evaluation.has_violations:
+                    if attempt > 1:
+                        update_progress(
+                            f"✅ Section {i+1}/{len(report_structure)} passed quality check on attempt {attempt}/{max_generation_attempts}: {section_title}"
+                        )
+                    break
+
+                if attempt == max_generation_attempts:
+                    update_progress(
+                        "⚠️ Section still has formatting issues after retries; using latest draft",
+                        {
+                            "section": section_title,
+                            "summary": evaluation.evaluator_summary,
+                        },
+                    )
+                    break
+
+                evaluator_feedback = (
+                    evaluation.regeneration_feedback
+                    or "Fix all structural formatting issues and return a clean section body."
+                )
+                penalized_previous_draft = section_content
+                update_progress(
+                    (
+                        f"♻️ Section {i+1}/{len(report_structure)} failed quality check; "
+                        f"retrying attempt {attempt+1}/{max_generation_attempts}: {section_title}"
+                    ),
+                    evaluator_feedback[:300],
+                )
+
             generated_contents.append(section_content)
             
             # Build cumulative previous content for next section
