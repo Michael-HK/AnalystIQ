@@ -628,6 +628,18 @@ Rules:
         content = re.sub(r"\n---\s*$", "", content.strip())
         return content.strip()
 
+    def extract_opening_section_preview(self, opening_section_markdown: str) -> str:
+        """Extract frontend-friendly opening section content from wrapped title-page markdown."""
+        if not opening_section_markdown:
+            return ""
+
+        content = opening_section_markdown
+        content = re.sub(r"<div class=\"title-page-title\">.*?</div>\s*", "", content, flags=re.DOTALL)
+        content = re.sub(r"<div class=\"title-page-info\">.*?</div>\s*", "", content, flags=re.DOTALL)
+        content = re.sub(r"<div style=['\"]page-break-after:\s*always;['\"]></div>\s*", "", content)
+        content = re.sub(r"\n---\s*$", "", content.strip())
+        return content.strip()
+
     def _sanitize_report_body_for_key_points(self, report_content: str) -> str:
         """Remove anchors and noisy citation-only fragments before key-point extraction."""
         if not report_content:
@@ -1341,6 +1353,9 @@ Report excerpt:
             context,
             rewritten_instruction,
         )
+        opening_section_preview = self.extract_opening_section_preview(opening_section)
+        if opening_section_preview:
+            update_progress("🧭 Opening section extracted", opening_section_preview)
 
         # 11. Generate executive summary (separate page)
         ensure_not_cancelled()
@@ -1660,6 +1675,9 @@ Report excerpt:
             context,
             rewritten_instruction,
         )
+        opening_section_preview = self.extract_opening_section_preview(opening_section)
+        if opening_section_preview:
+            update_progress("🧭 Opening section extracted", opening_section_preview)
 
         # 10. Generate executive summary (separate page)
         update_progress("📝 Generating comprehensive executive summary...")

@@ -22,70 +22,180 @@ st.set_page_config(
 # --- App Styling ---
 st.markdown("""
     <style>
+        :root {
+            --bg-canvas: #f3f6fc;
+            --bg-page: linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
+            --surface-primary: #ffffff;
+            --surface-secondary: #f8fbff;
+            --surface-muted: #f1f5f9;
+            --surface-accent: #eff6ff;
+            --border-subtle: #dbe3ef;
+            --border-strong: #cbd5e1;
+            --text-primary: #0f172a;
+            --text-secondary: #334155;
+            --text-muted: #64748b;
+            --accent-primary: #2563eb;
+            --accent-primary-soft: #dbeafe;
+            --success-soft: #dcfce7;
+            --success-text: #166534;
+            --radius-xs: 8px;
+            --radius-sm: 10px;
+            --radius-md: 14px;
+            --radius-lg: 18px;
+            --space-1: 0.3rem;
+            --space-2: 0.55rem;
+            --space-3: 0.8rem;
+            --space-4: 1rem;
+            --space-5: 1.25rem;
+            --space-6: 1.6rem;
+            --space-7: 2rem;
+            --shadow-soft: 0 8px 24px rgba(15, 23, 42, 0.06);
+            --shadow-medium: 0 14px 38px rgba(15, 23, 42, 0.1);
+            --shadow-focus: 0 0 0 3px rgba(37, 99, 235, 0.2);
+        }
+
         .stApp {
-            background: linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
+            background: var(--bg-page);
+            color: var(--text-primary);
+        }
+        .stMainBlockContainer {
+            max-width: 1320px;
+            padding-top: 1.3rem;
+            padding-bottom: 2.2rem;
+        }
+        h1, h2, h3, h4 {
+            color: var(--text-primary);
+            letter-spacing: -0.01em;
+        }
+        h2 {
+            font-size: 1.55rem;
+            font-weight: 700;
+            line-height: 1.25;
+            margin-bottom: var(--space-2);
+        }
+        h3 {
+            font-size: 1.1rem;
+            font-weight: 650;
+            line-height: 1.35;
+            margin-top: var(--space-5);
+            margin-bottom: var(--space-3);
+        }
+        p, li, .stMarkdown, .stCaption {
+            color: var(--text-secondary);
+            line-height: 1.55;
+        }
+        .stCaption {
+            color: var(--text-muted);
         }
         .hero-card {
-            padding: 1rem 1.2rem;
-            border-radius: 14px;
-            background: #ffffff;
-            border: 1px solid #e2e8f0;
-            box-shadow: 0 6px 20px rgba(15, 23, 42, 0.06);
-            margin-bottom: 1rem;
+            padding: var(--space-6) var(--space-6);
+            border-radius: var(--radius-lg);
+            background: linear-gradient(160deg, #ffffff 0%, #f8fbff 100%);
+            border: 1px solid var(--border-subtle);
+            box-shadow: var(--shadow-medium);
+            margin-bottom: var(--space-6);
+        }
+        .hero-kicker {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.26rem 0.65rem;
+            border-radius: 999px;
+            background: var(--surface-accent);
+            color: #1d4ed8;
+            font-size: 0.76rem;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            text-transform: uppercase;
+            margin-bottom: 0.55rem;
         }
         .subtle-text {
-            color: #475569;
-            font-size: 0.95rem;
+            color: var(--text-muted);
+            font-size: 0.98rem;
+            max-width: 74ch;
+        }
+        .hero-list {
+            margin: var(--space-4) 0 0 1.15rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+        .hero-footnote {
+            margin-top: var(--space-4);
+            padding-top: var(--space-3);
+            border-top: 1px solid #e2e8f0;
+            font-size: 0.92rem;
+            color: var(--text-secondary);
+        }
+        .kpi-intro {
+            margin: 0.15rem 0 0.4rem 0;
+            color: var(--text-muted);
+            font-size: 0.9rem;
         }
         .generated-item {
-            border: 1px solid #dbeafe;
-            border-left: 4px solid #2563eb;
-            border-radius: 8px;
-            background: #f8fbff;
-            padding: 0.6rem 0.8rem;
-            margin-bottom: 0.5rem;
+            border: 1px solid var(--border-subtle);
+            border-left: 4px solid var(--accent-primary);
+            border-radius: var(--radius-sm);
+            background: var(--surface-secondary);
+            padding: 0.68rem 0.9rem;
+            margin-bottom: var(--space-2);
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
         }
         .status-chip {
             display: inline-block;
-            padding: 0.25rem 0.6rem;
+            padding: 0.28rem 0.66rem;
             border-radius: 999px;
-            background: #e2e8f0;
-            color: #0f172a;
-            font-size: 0.8rem;
-            font-weight: 600;
+            background: var(--surface-muted);
+            color: var(--text-secondary);
+            font-size: 0.77rem;
+            font-weight: 700;
+            letter-spacing: 0.01em;
         }
         .summary-preview-card {
-            border: 1px solid #cbd5e1;
-            border-left: 6px solid #1d4ed8;
-            border-radius: 10px;
-            background: #ffffff;
-            padding: 1rem 1.1rem;
-            margin-top: 0.3rem;
-            box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
+            border: 1px solid var(--border-strong);
+            border-left: 5px solid var(--accent-primary);
+            border-radius: var(--radius-md);
+            background: var(--surface-primary);
+            padding: var(--space-5);
+            margin-top: var(--space-1);
+            box-shadow: var(--shadow-soft);
+        }
+        .highlights-card {
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+            padding: var(--space-4);
+            box-shadow: var(--shadow-soft);
         }
         .keypoint-card {
             border: 1px solid #dbeafe;
-            border-radius: 10px;
-            background: #f8fbff;
-            padding: 0.7rem 0.9rem;
-            margin-bottom: 0.5rem;
-            color: #0f172a;
+            border-radius: var(--radius-sm);
+            background: var(--surface-secondary);
+            padding: 0.72rem 0.9rem;
+            margin-bottom: var(--space-2);
+            color: var(--text-primary);
+        }
+        .timeline-panel {
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            background: var(--surface-primary);
+            padding: var(--space-4);
+            box-shadow: var(--shadow-soft);
         }
         .timeline-item {
             display: flex;
             align-items: flex-start;
-            gap: 0.65rem;
-            border: 1px solid #e2e8f0;
-            border-radius: 10px;
-            background: #ffffff;
-            padding: 0.65rem 0.8rem;
-            margin-bottom: 0.45rem;
-            color: #0f172a;
+            gap: var(--space-2);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            background: var(--surface-primary);
+            padding: 0.68rem 0.82rem;
+            margin-bottom: 0.42rem;
+            color: var(--text-primary);
+            transition: all 0.2s ease;
         }
         .timeline-item.current {
             border-color: #93c5fd;
-            background: #eff6ff;
-            box-shadow: 0 4px 14px rgba(37, 99, 235, 0.12);
+            background: var(--surface-accent);
+            box-shadow: 0 6px 18px rgba(37, 99, 235, 0.14);
         }
         .timeline-dot {
             width: 1.4rem;
@@ -94,23 +204,164 @@ st.markdown("""
             align-items: center;
             justify-content: center;
             border-radius: 999px;
-            background: #dcfce7;
-            color: #166534;
+            background: var(--success-soft);
+            color: var(--success-text);
             font-size: 0.8rem;
             font-weight: 700;
             flex-shrink: 0;
         }
         .timeline-item.current .timeline-dot {
-            background: #dbeafe;
+            background: var(--accent-primary-soft);
             color: #1d4ed8;
         }
         .timeline-text {
             flex: 1;
             min-width: 0;
-            line-height: 1.35;
+            line-height: 1.4;
             white-space: normal;
             overflow-wrap: anywhere;
             word-break: break-word;
+        }
+        .section-shell {
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            background: var(--surface-primary);
+            box-shadow: var(--shadow-soft);
+            padding: var(--space-4) var(--space-5);
+            margin-bottom: var(--space-4);
+        }
+        .snapshot-shell {
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            background: var(--surface-primary);
+            box-shadow: var(--shadow-soft);
+            padding: var(--space-4) var(--space-5);
+            margin-top: var(--space-4);
+        }
+        .download-shell {
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            background: var(--surface-primary);
+            box-shadow: var(--shadow-soft);
+            padding: var(--space-5);
+            margin-top: var(--space-3);
+        }
+        .download-heading {
+            margin-top: 0;
+            margin-bottom: var(--space-1);
+        }
+        [data-testid="stMetric"] {
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            background: linear-gradient(180deg, #ffffff 0%, #f9fbff 100%);
+            box-shadow: var(--shadow-soft);
+            padding: 0.8rem 0.95rem;
+            min-height: 7rem;
+        }
+        [data-testid="stMetricLabel"] {
+            color: var(--text-muted);
+            font-weight: 600;
+            letter-spacing: 0.01em;
+        }
+        [data-testid="stMetricValue"] {
+            color: var(--text-primary);
+            font-size: 1.12rem;
+            font-weight: 700;
+            line-height: 1.22;
+        }
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 0.25rem;
+            background: #eef2ff;
+            border-radius: 12px;
+            padding: 0.25rem;
+        }
+        .stTabs [data-baseweb="tab"] {
+            border-radius: 9px;
+            color: var(--text-secondary);
+            font-weight: 600;
+            letter-spacing: 0.01em;
+            padding: 0.35rem 0.7rem;
+        }
+        .stTabs [aria-selected="true"] {
+            background: #ffffff;
+            color: #1e3a8a;
+            box-shadow: 0 2px 8px rgba(15, 23, 42, 0.07);
+        }
+        .stButton > button,
+        .stDownloadButton > button {
+            border-radius: 10px;
+            border: 1px solid transparent;
+            font-weight: 600;
+            letter-spacing: 0.01em;
+            transition: all 0.2s ease;
+        }
+        .stButton > button[kind="primary"],
+        .stDownloadButton > button[kind="primary"] {
+            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+            box-shadow: 0 8px 20px rgba(37, 99, 235, 0.25);
+            color: #ffffff !important;
+        }
+        .stButton > button[kind="primary"] *,
+        .stDownloadButton > button[kind="primary"] * {
+            color: #ffffff !important;
+        }
+        .stButton > button[kind="primary"]:hover,
+        .stDownloadButton > button[kind="primary"]:hover {
+            filter: brightness(1.03);
+            transform: translateY(-1px);
+        }
+        .stButton > button:focus-visible,
+        .stDownloadButton > button:focus-visible {
+            box-shadow: var(--shadow-focus);
+            outline: none;
+        }
+        [data-testid="stSidebar"] {
+            background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+            border-right: 1px solid var(--border-subtle);
+        }
+        [data-testid="stSidebar"] .stSelectbox,
+        [data-testid="stSidebar"] .stTextArea {
+            margin-bottom: 0.32rem;
+        }
+        .status-metric-card {
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            background: linear-gradient(180deg, #ffffff 0%, #f9fbff 100%);
+            box-shadow: var(--shadow-soft);
+            padding: 0.8rem 0.95rem;
+            min-height: 7rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+        }
+        .status-metric-label {
+            color: var(--text-muted);
+            font-weight: 600;
+            letter-spacing: 0.01em;
+            font-size: 0.87rem;
+            margin-bottom: 0.5rem;
+        }
+        .status-metric-value {
+            color: var(--text-primary);
+            font-size: 1.12rem;
+            font-weight: 700;
+            line-height: 1.22;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+        }
+        .status-spinner {
+            width: 0.9rem;
+            height: 0.9rem;
+            border-radius: 999px;
+            border: 2px solid rgba(37, 99, 235, 0.22);
+            border-top-color: #2563eb;
+            animation: status-spin 0.85s linear infinite;
+            flex-shrink: 0;
+        }
+        @keyframes status-spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
         }
     </style>
 """, unsafe_allow_html=True)
@@ -192,6 +443,7 @@ def initialize_session_state() -> None:
         "run_error": None,
         "pending_error": None,
         "executive_summary_preview": "",
+        "opening_section_preview": "",
         "key_points": [],
         "report_md_path": "",
         "ppt_path": "",
@@ -261,6 +513,8 @@ def main():
                     st.session_state.custom_instruction_feedback = ("ignored", data or "")
                 if "executive summary extracted" in message_lower and data:
                     st.session_state.executive_summary_preview = str(data).strip()
+                if "opening section extracted" in message_lower and data:
+                    st.session_state.opening_section_preview = str(data).strip()
                 if "key bullets extracted" in message_lower and data:
                     if isinstance(data, list):
                         st.session_state.key_points = [str(item).strip() for item in data if str(item).strip()]
@@ -283,6 +537,7 @@ def main():
                 st.session_state.run_status = "Idle"
                 st.session_state.run_error = None
                 st.session_state.pending_error = None
+                st.session_state.opening_section_preview = ""
                 st.session_state.executive_summary_preview = ""
                 st.session_state.key_points = []
                 st.session_state.report_md_path = ""
@@ -309,16 +564,17 @@ def main():
 
     st.markdown("""
     <div class="hero-card">
-      <h2 style="margin:0; color:#0f172a;">AgentInvest Research Studio</h2>
-      <p class="subtle-text" style="margin:0.5rem 0 0 0;">
-        Built for investment teams to move from ticker selection to decision-ready materials quickly.
+      <span class="hero-kicker">Institutional workflow</span>
+      <h2 style="margin:0;">AgentInvest Research Studio</h2>
+      <p class="subtle-text" style="margin:0.4rem 0 0 0;">
+        Built for investment teams to move from ticker selection to decision-ready materials with consistent, presentation-ready output.
       </p>
-      <ul style="margin:0.7rem 0 0 1.2rem; color:#334155; line-height:1.55;">
+      <ul class="hero-list">
         <li><b>Investment-ready brief:</b> Generate a professional report with company context, structured analysis, and references.</li>
         <li><b>Live decision insights:</b> Review an executive summary and top highlights in the app before downloading files.</li>
         <li><b>Editable presentation export:</b> Create and download a <b>.pptx</b> deck (up to 10 slides) for internal edits and investment meetings.</li>
       </ul>
-      <p style="margin:0.75rem 0 0 0; color:#1e293b; font-size:0.93rem;">
+      <p class="hero-footnote">
         <b>How to navigate:</b> Select a ticker in the sidebar, click <b>Generate Report</b>, follow the <b>Research Journey</b>,
         review the <b>Investment Snapshot</b>, then download the PDF and optional editable PowerPoint.
       </p>
@@ -369,6 +625,7 @@ def main():
         st.session_state.custom_instruction_feedback = None
         st.session_state.run_error = None
         st.session_state.pending_error = None
+        st.session_state.opening_section_preview = ""
         st.session_state.executive_summary_preview = ""
         st.session_state.key_points = []
         st.session_state.report_md_path = ""
@@ -380,12 +637,32 @@ def main():
         st.session_state.pdf_in_progress = False
 
     generation_time = get_gmt8_timestamp()
+    st.markdown("<p class='kpi-intro'>Live run diagnostics and generation status</p>", unsafe_allow_html=True)
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Selected Ticker", selected_ticker)
-    display_company = st.session_state.company_name or ("Detecting company..." if st.session_state.is_running else "Not started")
+    if st.session_state.company_name:
+        company_words = st.session_state.company_name.split()
+        display_company = " ".join(company_words[:2])
+    else:
+        display_company = "Detecting company..." if st.session_state.is_running else "Not started"
     m2.metric("Company", display_company)
-    status_placeholder = m3.empty()
-    status_placeholder.metric("Report Status", st.session_state.run_status)
+    with m3:
+        status_placeholder = st.empty()
+
+    def render_status_metric() -> None:
+        status_value = html.escape(st.session_state.run_status)
+        spinner_html = "<span class='status-spinner' aria-hidden='true'></span>" if st.session_state.is_running else ""
+        status_placeholder.markdown(
+            (
+                "<div class='status-metric-card'>"
+                "<div class='status-metric-label'>Report Status</div>"
+                f"<div class='status-metric-value'>{spinner_html}<span>{status_value}</span></div>"
+                "</div>"
+            ),
+            unsafe_allow_html=True,
+        )
+
+    render_status_metric()
     m4.metric("Timestamp (GMT+8)", generation_time)
 
     if st.session_state.custom_instruction_feedback:
@@ -402,6 +679,7 @@ def main():
                 )
 
     def render_dynamic_sections() -> None:
+        st.markdown("<div class='section-shell'>", unsafe_allow_html=True)
         structure_area, web_queries_area, financial_queries_area = st.tabs(
             ["Report Roadmap", "Market Signals", "Financial Highlights"]
         )
@@ -436,11 +714,14 @@ def main():
                 )
             if not financial_queries:
                 st.caption("Financial analysis themes will appear here.")
+        st.markdown("</div>", unsafe_allow_html=True)
 
     def render_research_journey_panel() -> None:
+        st.markdown("<div class='timeline-panel'>", unsafe_allow_html=True)
         st.markdown("### AgentInvest Reasoning")
         if not st.session_state.progress_log:
             st.info("Choose your ticker and click `Generate Report` to begin.")
+            st.markdown("</div>", unsafe_allow_html=True)
             return
 
         with st.expander("View Activity Timeline", expanded=True):
@@ -452,35 +733,41 @@ def main():
                     f"<div class='{item_class}'><span class='timeline-dot'>{'↻' if is_current else '✓'}</span><span class='timeline-text'>{safe_log}</span></div>",
                     unsafe_allow_html=True,
                 )
+        st.markdown("</div>", unsafe_allow_html=True)
 
     def render_investment_snapshot() -> None:
-        has_summary = bool(st.session_state.executive_summary_preview.strip())
+        has_summary = bool(st.session_state.opening_section_preview.strip())
         has_points = bool(st.session_state.key_points)
         if not has_summary and not has_points and not st.session_state.report_generated:
             return
 
+        st.markdown("<div class='snapshot-shell'>", unsafe_allow_html=True)
         st.markdown("### Investment Snapshot")
         left_col, right_col = st.columns([1.6, 1.0], gap="large")
 
         with left_col:
             st.markdown("#### Investment Brief")
             if has_summary:
-                with st.container():
-                    st.markdown(st.session_state.executive_summary_preview)
+                st.markdown("<div class='summary-preview-card'>", unsafe_allow_html=True)
+                st.markdown(st.session_state.opening_section_preview)
+                st.markdown("</div>", unsafe_allow_html=True)
             else:
                 st.info("Your investment brief will appear shortly.")
 
         with right_col:
             st.markdown("#### Decision Highlights")
             if has_points:
+                st.markdown("<div class='highlights-card'>", unsafe_allow_html=True)
                 for idx, point in enumerate(st.session_state.key_points[:5], start=1):
                     safe_point = html.escape(point)
                     st.markdown(
                         f"<div class='keypoint-card'><b>{idx}.</b> {safe_point}</div>",
                         unsafe_allow_html=True,
                     )
+                st.markdown("</div>", unsafe_allow_html=True)
             else:
                 st.info("Top highlights will appear once extraction is complete.")
+        st.markdown("</div>", unsafe_allow_html=True)
 
     if st.sidebar.button("Generate Report", type="primary", disabled=st.session_state.is_running):
         st.session_state.report_generated = False
@@ -492,6 +779,7 @@ def main():
         st.session_state.custom_instruction_feedback = None
         st.session_state.run_error = None
         st.session_state.pending_error = None
+        st.session_state.opening_section_preview = ""
         st.session_state.executive_summary_preview = ""
         st.session_state.key_points = []
         st.session_state.report_md_path = ""
@@ -504,7 +792,7 @@ def main():
         st.session_state.last_selected_ticker = selected_ticker
         st.session_state.progress_queue = Queue()
         st.session_state.stop_event = threading.Event()
-        status_placeholder.metric("Run Status", st.session_state.run_status)
+        render_status_metric()
         worker = threading.Thread(
             target=run_report_worker,
             args=(
@@ -611,6 +899,7 @@ def main():
     if st.session_state.report_generated and not st.session_state.is_running:
         st.markdown("---")
         st.success("Your report package is ready.")
+        st.markdown("<div class='download-shell'>", unsafe_allow_html=True)
 
         st.markdown("### Download Report")
         if os.path.exists(st.session_state.pdf_path):
@@ -641,6 +930,7 @@ def main():
                 )
             ppt_size = os.path.getsize(st.session_state.ppt_path) / 1024
             st.caption(f"PPT size: {ppt_size:.1f} KB")
+        st.markdown("</div>", unsafe_allow_html=True)
     elif st.session_state.report_generated and st.session_state.is_running:
         st.info("Finalizing report files...")
 
