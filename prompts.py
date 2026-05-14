@@ -177,6 +177,7 @@ Before generating any content, you MUST first reflect on and analyze the specifi
 **Core Instructions:**
 - **Professional Tone**: Adopt a formal, analytical tone with precise, objective language that maintains conversational flow without robotic phrasing.
 - **In-Depth Analysis**: Synthesize information from multiple sources, identify trends, and provide actionable insights. Do not merely summarize. Your output should demonstrate deep analytical thinking with well-structured content.
+- **Language Lock (MANDATORY)**: Write the entire response in clear professional English only. Do not output Chinese or mixed-language text. If source material is non-English, translate/summarize it into English.
 - **Content Structure Variety**: Use a strategic mix of:
   - **Paragraphs**: For detailed analysis and explanations
   - **Bullet Points**: For key insights, advantages, risks, or summary points (use • or -)
@@ -439,6 +440,7 @@ IMPORTANT REQUIREMENTS:
 7. **Single Data Point Alternative**: If you have only 1-2 data points, present them using bold text, bullet points, or tables instead of charts.
 8. ONLY output the content for the section, no other text. DO NOT include section title.
 9. Target 400-500 words of text content (charts are additional and do not count toward word limit).
+10. **Language Lock**: Output in professional English only. Do not include Chinese or mixed-language text.
 
 CRITICAL FORMATTING REQUIREMENTS:
 - **COLON PLACEMENT**: Never allow colons to appear alone on new lines. Always keep colons attached to their preceding word.
@@ -477,6 +479,7 @@ Before generating any content, you MUST first reflect on and analyze the specifi
 **Core Instructions:**
 - **Professional Tone**: Adopt a formal, analytical tone with precise, objective language that maintains conversational flow without robotic phrasing.
 - **In-Depth Analysis**: Synthesize information from multiple sources, identify trends, and provide actionable insights. Do not merely summarize. Your output should demonstrate deep analytical thinking with well-structured content.
+- **Language Lock (MANDATORY)**: Write the entire response in clear professional English only. Do not output Chinese or mixed-language text. If source material is non-English, translate/summarize it into English.
 - **Content Structure Variety**: Use a strategic mix of:
   - **Paragraphs**: For detailed analysis and explanations
   - **Bullet Points**: For key insights, advantages, risks, or summary points (use • or -)
@@ -686,6 +689,7 @@ Based on the comprehensive research data provided, you must create an opening se
 
 **Requirements:**
 - Use ONLY information from the provided context - do not make up data
+- Write in professional English only (no Chinese or mixed-language output)
 - Keep the thesis compelling but factual
 - Make recommendations specific and actionable
 - Include actual financial metrics where available
@@ -716,6 +720,7 @@ Based on the complete report content provided, you must create an executive summ
 3. **Key Highlights**: Include the most compelling financial metrics, growth drivers, and risks
 4. **Forward-Looking**: Mention key catalysts and timeline expectations
 5. **Professional Tone**: Executive-level language suitable for senior decision makers
+6. **Language Lock**: Write in professional English only. Do not output Chinese or mixed-language text.
 
 **Structure Guidelines:**
 - **Investment Recommendation**: Clear stance with confidence level
@@ -796,6 +801,7 @@ Before generating any content, you MUST first reflect on and analyze the specifi
 **Core Instructions:**
 - **Professional Tone**: Adopt a formal, analytical tone with precise, objective language that maintains conversational flow without robotic phrasing.
 - **In-Depth Analysis**: Synthesize information from multiple sources, identify trends, and provide actionable insights. Do not merely summarize. Your output should demonstrate deep analytical thinking with well-structured content.
+- **Language Lock (MANDATORY)**: Write the entire response in clear professional English only. Do not output Chinese or mixed-language text. If source material is non-English, translate/summarize it into English.
 - **Content Structure Variety**: Use a strategic mix of:
   - **Paragraphs**: For detailed analysis and explanations
   - **Bullet Points**: For key insights, advantages, risks, or summary points (use • or -)

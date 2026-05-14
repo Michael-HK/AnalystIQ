@@ -615,6 +615,43 @@ Rules:
                     )
                 )
 
+        replacement_like_chars = {
+            "\uFFFD",  # replacement character
+            "\u25A1",  # white square
+            "\u25A0",  # black square
+            "\u25AF",  # white vertical rectangle
+            "\u25AE",  # black vertical rectangle
+        }
+        replacement_hits = sum(section_content.count(ch) for ch in replacement_like_chars)
+        if replacement_hits >= 2:
+            violations.append(
+                SectionViolation(
+                    violation_type="REPLACEMENT_OR_BOX_GLYPHS_DETECTED",
+                    evidence=f"Detected {replacement_hits} replacement/box glyph characters.",
+                    fix_instruction=(
+                        "Regenerate with clean UTF-8 text and avoid malformed characters. "
+                        "Use plain readable English for narrative sections."
+                    ),
+                )
+            )
+
+        latin_letters = len(re.findall(r"[A-Za-z]", section_content))
+        cjk_chars = len(re.findall(r"[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]", section_content))
+        # Flag likely language/script drift for an English narrative report.
+        if cjk_chars >= 40 and (latin_letters == 0 or cjk_chars > latin_letters * 0.6):
+            violations.append(
+                SectionViolation(
+                    violation_type="UNEXPECTED_SCRIPT_DRIFT",
+                    evidence=(
+                        f"CJK chars={cjk_chars}, Latin letters={latin_letters}; "
+                        "content may render as tofu boxes with current PDF fonts."
+                    ),
+                    fix_instruction=(
+                        "Regenerate this section in professional English only, preserving citations and numeric facts."
+                    ),
+                )
+            )
+
         if violations:
             feedback = " ".join(v.fix_instruction for v in violations)
             return SectionGenerationEvaluationResult(
@@ -657,6 +694,8 @@ Check ONLY structural output risks that break readability/rendering:
 6) Empty chart container (e.g., labels: [] or datasets: []).
 7) Chart dataset without data (e.g., data: []).
 8) Chart code not wrapped with proper rendering/extraction wrapper (must be complete ```html``` with canvas+script).
+9) Replacement/mojibake/tofu-like characters likely to render as square boxes in PDF.
+10) Unexpected script/language drift (non-English block output) that breaks report readability consistency.
 
 Section title: {section_title}
 Section content:

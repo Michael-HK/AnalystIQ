@@ -1,6 +1,7 @@
 markdown2
 llama-index-core>=0.10.0
 llama-index-llms-openrouter
+pydantic
 python-dotenv
 tavily-python
 yfinance

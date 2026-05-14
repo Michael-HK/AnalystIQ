@@ -807,6 +807,34 @@ def main():
         worker.start()
         st.rerun()
 
+    report_download_ready = (
+        st.session_state.report_generated
+        and not st.session_state.is_running
+        and bool(st.session_state.pdf_path)
+        and os.path.exists(st.session_state.pdf_path)
+    )
+    report_download_data = b""
+    report_download_name = "Investment_Report.pdf"
+    report_size_text = ""
+    if report_download_ready:
+        report_download_name = os.path.basename(st.session_state.pdf_path)
+        with open(st.session_state.pdf_path, "rb") as pdf_file:
+            report_download_data = pdf_file.read()
+        report_size = os.path.getsize(st.session_state.pdf_path) / 1024
+        report_size_text = f"PDF size: {report_size:.1f} KB"
+
+    st.sidebar.download_button(
+        label="Download Report (PDF)",
+        data=report_download_data,
+        file_name=report_download_name,
+        mime="application/pdf",
+        type="primary",
+        disabled=not report_download_ready,
+        help=None if report_download_ready else "Generate and complete the report first.",
+    )
+    if report_download_ready:
+        st.sidebar.caption(f"{report_size_text} | Generated (GMT+8): {get_gmt8_timestamp()}")
+
     st.sidebar.markdown("---")
     st.sidebar.markdown("### Presentation Export")
     st.sidebar.caption(
@@ -881,6 +909,33 @@ def main():
             finally:
                 st.session_state.is_generating_ppt = False
 
+    ppt_download_ready = (
+        st.session_state.ppt_ready
+        and bool(st.session_state.ppt_path)
+        and os.path.exists(st.session_state.ppt_path)
+    )
+    ppt_download_data = b""
+    ppt_download_name = "Investment_Presentation.pptx"
+    ppt_size_text = ""
+    if ppt_download_ready:
+        ppt_download_name = os.path.basename(st.session_state.ppt_path)
+        with open(st.session_state.ppt_path, "rb") as ppt_file:
+            ppt_download_data = ppt_file.read()
+        ppt_size = os.path.getsize(st.session_state.ppt_path) / 1024
+        ppt_size_text = f"PPT size: {ppt_size:.1f} KB"
+
+    st.sidebar.download_button(
+        label="Download Presentation (PPTX)",
+        data=ppt_download_data,
+        file_name=ppt_download_name,
+        mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        type="primary",
+        disabled=not ppt_download_ready,
+        help=None if ppt_download_ready else "Generate the presentation first.",
+    )
+    if ppt_download_ready:
+        st.sidebar.caption(ppt_size_text)
+
     if st.session_state.run_error and not st.session_state.is_running:
         st.error(f"Report generation failed: {st.session_state.run_error}")
 
@@ -897,40 +952,7 @@ def main():
         )
 
     if st.session_state.report_generated and not st.session_state.is_running:
-        st.markdown("---")
         st.success("Your report package is ready.")
-        st.markdown("<div class='download-shell'>", unsafe_allow_html=True)
-
-        st.markdown("### Download Report")
-        if os.path.exists(st.session_state.pdf_path):
-            with open(st.session_state.pdf_path, "rb") as pdf_file:
-                st.download_button(
-                    label="Download Investment Report (PDF)",
-                    data=pdf_file.read(),
-                    file_name=os.path.basename(st.session_state.pdf_path),
-                    mime="application/pdf",
-                    type="primary",
-                )
-            file_size = os.path.getsize(st.session_state.pdf_path) / 1024
-            st.caption(
-                f"File size: {file_size:.1f} KB | Generated (GMT+8): {get_gmt8_timestamp()}"
-            )
-        else:
-            st.error("Generated PDF file was not found.")
-
-        if st.session_state.ppt_ready and st.session_state.ppt_path and os.path.exists(st.session_state.ppt_path):
-            st.markdown("### Download Presentation")
-            with open(st.session_state.ppt_path, "rb") as ppt_file:
-                st.download_button(
-                    label="Download Presentation (PPTX)",
-                    data=ppt_file.read(),
-                    file_name=os.path.basename(st.session_state.ppt_path),
-                    mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                    type="primary",
-                )
-            ppt_size = os.path.getsize(st.session_state.ppt_path) / 1024
-            st.caption(f"PPT size: {ppt_size:.1f} KB")
-        st.markdown("</div>", unsafe_allow_html=True)
     elif st.session_state.report_generated and st.session_state.is_running:
         st.info("Finalizing report files...")
 
