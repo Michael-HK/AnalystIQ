@@ -1,9 +1,9 @@
-# AgentInvest PoC
+# InvestIQ (Intelligent investment report generation)
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**AgentInvest** is an AI-powered platform that generates professional investment theses and PDF reports from a single input: a stock ticker.
+**InvestIQ** is an AI-powered platform that generates professional investment theses and PDF reports from a single input: a stock ticker.
 
 ## 🚀 Key Features
 
