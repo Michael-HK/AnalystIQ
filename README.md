@@ -169,7 +169,23 @@ The application supports:
 2. Select a stock ticker from the dropdown
 3. Click "Generate Report"
 4. Monitor progress in real-time
-5. Download the generated PDF report
+5. Download report directly from the **left sidebar** once ready
+6. Click **Generate Presentation (PPTX)** after report completion
+7. Download presentation directly from the sidebar when generation is complete
+
+## 🖼️ Frontend Screenshots
+
+### Overview
+![AgentInvest UI Overview](docs/images/ui-overview.png)
+
+### Investment Snapshot and Timeline
+![Investment Snapshot](docs/images/ui-investment-snapshot.png)
+
+### Market Signals Tab
+![Market Signals](docs/images/ui-market-signals.png)
+
+### Financial Highlights Tab
+![Financial Highlights](docs/images/ui-financial-highlights.png)
 
 ## 📁 Project Structure
 
@@ -189,6 +205,8 @@ PoC_AgentInvest/
 │   ├── web_search.py       # Tavily web search
 │   ├── financial_tools.py  # Yahoo Finance integration
 │   └── __init__.py
+├── docs/
+│   └── images/             # README screenshots
 └── generated_reports/      # Output directory for reports
 ```
 

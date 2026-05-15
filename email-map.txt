@@ -1,0 +1,9 @@
+# Canonical identity: Michael-HK <tobi.alabi@connect.polyu.hk>
+# Format: Canonical Name <canonical@email> Commit Name <commit@email>
+
+Michael-HK <tobi.alabi@connect.polyu.hk> JamesNgMidasAnalytics <james@midasanalytics.ai>
+Michael-HK <tobi.alabi@connect.polyu.hk> quaesito <michele@midasanalytics.ai>
+
+# Optional email-only aliases (works even if commit names vary)
+<tobi.alabi@connect.polyu.hk> <james@midasanalytics.ai>
+<tobi.alabi@connect.polyu.hk> <michele@midasanalytics.ai>
