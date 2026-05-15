@@ -13,7 +13,7 @@ GMT_PLUS_8 = timezone(timedelta(hours=8))
 
 # --- Page Configuration ---
 st.set_page_config(
-    page_title="AgentInvest",
+    page_title="InvestIQ",
     page_icon="💼",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -565,7 +565,7 @@ def main():
     st.markdown("""
     <div class="hero-card">
       <span class="hero-kicker">Institutional workflow</span>
-      <h2 style="margin:0;">AgentInvest Research Studio</h2>
+      <h2 style="margin:0;">InvestIQ Studio</h2>
       <p class="subtle-text" style="margin:0.4rem 0 0 0;">
         Built for investment teams to move from ticker selection to decision-ready materials with consistent, presentation-ready output.
       </p>
@@ -718,7 +718,7 @@ def main():
 
     def render_research_journey_panel() -> None:
         st.markdown("<div class='timeline-panel'>", unsafe_allow_html=True)
-        st.markdown("### AgentInvest Reasoning")
+        st.markdown("### InvestIQ Reasoning")
         if not st.session_state.progress_log:
             st.info("Choose your ticker and click `Generate Report` to begin.")
             st.markdown("</div>", unsafe_allow_html=True)
