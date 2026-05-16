@@ -21,6 +21,7 @@ st.set_page_config(
 
 # --- App Styling ---
 st.markdown("""
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
             --bg-canvas: #f3f6fc;
@@ -34,7 +35,8 @@ st.markdown("""
             --text-primary: #0f172a;
             --text-secondary: #334155;
             --text-muted: #64748b;
-            --accent-primary: #2563eb;
+            --accent-primary: #2563eb; /* Slightly darker blue */
+            --accent-primary-dark: #1d4ed8;
             --accent-primary-soft: #dbeafe;
             --success-soft: #dcfce7;
             --success-text: #166534;
@@ -52,11 +54,17 @@ st.markdown("""
             --shadow-soft: 0 8px 24px rgba(15, 23, 42, 0.06);
             --shadow-medium: 0 14px 38px rgba(15, 23, 42, 0.1);
             --shadow-focus: 0 0 0 3px rgba(37, 99, 235, 0.2);
+            --font-family: 'IBM Plex Sans', sans-serif;
+        }
+
+        body {
+            font-family: var(--font-family);
         }
 
         .stApp {
             background: var(--bg-page);
             color: var(--text-primary);
+            font-family: var(--font-family);
         }
         .stMainBlockContainer {
             max-width: 1320px;
@@ -64,32 +72,35 @@ st.markdown("""
             padding-bottom: 2.2rem;
         }
         h1, h2, h3, h4 {
+            font-family: var(--font-family);
             color: var(--text-primary);
             letter-spacing: -0.01em;
         }
         h2 {
-            font-size: 1.55rem;
+            font-size: 1.65rem; /* Slightly larger */
             font-weight: 700;
             line-height: 1.25;
             margin-bottom: var(--space-2);
         }
         h3 {
-            font-size: 1.1rem;
-            font-weight: 650;
+            font-size: 1.15rem; /* Slightly larger */
+            font-weight: 600; /* Slightly lighter */
             line-height: 1.35;
             margin-top: var(--space-5);
             margin-bottom: var(--space-3);
         }
         p, li, .stMarkdown, .stCaption {
+            font-family: var(--font-family);
             color: var(--text-secondary);
-            line-height: 1.55;
+            line-height: 1.6; /* Increased line height */
+            font-size: 0.96rem; /* Slightly smaller for body text */
         }
         .stCaption {
             color: var(--text-muted);
+            font-size: 0.88rem; /* Slightly smaller */
         }
         .hero-card {
-            padding: var(--space-6) var(--space-6);
-            border-radius: var(--radius-lg);
+            padding: var(--space-6) var(--space-6);            border-radius: var(--radius-lg);
             background: linear-gradient(160deg, #ffffff 0%, #f8fbff 100%);
             border: 1px solid var(--border-subtle);
             box-shadow: var(--shadow-medium);
@@ -290,14 +301,22 @@ st.markdown("""
         .stButton > button,
         .stDownloadButton > button {
             border-radius: 10px;
-            border: 1px solid transparent;
+            border: 1px solid var(--accent-primary);
             font-weight: 600;
             letter-spacing: 0.01em;
             transition: all 0.2s ease;
+            color: var(--accent-primary);
+            background: transparent;
+        }
+        .stButton > button:hover,
+        .stDownloadButton > button:hover {
+            border-color: var(--accent-primary-dark);
+            color: var(--accent-primary-dark);
         }
         .stButton > button[kind="primary"],
         .stDownloadButton > button[kind="primary"] {
-            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+            background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-dark) 100%);
+            border: 1px solid var(--accent-primary-dark);
             box-shadow: 0 8px 20px rgba(37, 99, 235, 0.25);
             color: #ffffff !important;
         }
@@ -365,6 +384,8 @@ st.markdown("""
         }
     </style>
 """, unsafe_allow_html=True)
+
+# --- Helper Functions ---
 
 # --- Helper Functions ---
 @st.cache_resource(show_spinner=False)
@@ -581,34 +602,47 @@ def main():
     </div>
     """, unsafe_allow_html=True)
 
-    st.sidebar.markdown("## Report Configuration")
-    if not warmup_ok:
-        st.sidebar.caption("Preparing report runtime components...")
-    selected_ticker = st.sidebar.selectbox("Select a Stock Ticker:", TICKERS)
-    custom_instruction_input = st.sidebar.text_area(
-        "Optional Custom Instruction",
-        placeholder=(
-            "Example: Focus more on downside risk, valuation assumptions, and "
-            "competitive moat sustainability."
-        ),
-        help=(
-            "Optional guidance for report writing. Instructions are checked by an LLM. "
-            "Irrelevant or unsafe instructions are automatically ignored."
-        ),
-        height=140,
-    )
-    presentation_style = st.sidebar.selectbox(
-        "Presentation Style",
-        ["Institutional Light", "Executive Dark", "Minimal Clean"],
-        index=0,
-        help="Choose the visual style for the editable PowerPoint deck.",
-    )
+    st.sidebar.markdown("<h2 style='margin-bottom:0;'>InvestIQ Studio</h2>", unsafe_allow_html=True)
+    st.sidebar.markdown("""<p style='font-size:0.9rem; color:var(--text-muted); margin-bottom: 1.5rem;'>Generate comprehensive investment reports.</p>""", unsafe_allow_html=True)
+
+    st.sidebar.markdown("### Report Configuration")
+    with st.sidebar.container(border=True):
+        st.markdown("**Ticker Selection**")
+        if not warmup_ok:
+            st.caption("Preparing report runtime components...")
+        selected_ticker = st.selectbox("Select a Stock Ticker:", TICKERS, label_visibility="collapsed")
+    
+    st.sidebar.markdown("### Customization")
+    with st.sidebar.expander("Advanced Options", expanded=True):
+        custom_instruction_input = st.text_area(
+            "Optional Custom Instruction",
+            placeholder=(
+                "Example: Focus more on downside risk, valuation assumptions, and "
+                "competitive moat sustainability."
+            ),
+            help=(
+                "Optional guidance for report writing. Instructions are checked by an LLM. "
+                "Irrelevant or unsafe instructions are automatically ignored."
+            ),
+            height=140,
+        )
+        st.markdown("<div style='margin-top: 1rem;'></div>", unsafe_allow_html=True) # Add spacing
+        presentation_style = st.selectbox(
+            "Presentation Style",
+            ["Institutional Light", "Executive Dark", "Minimal Clean"],
+            index=0,
+            help="Choose the visual style for the editable PowerPoint deck.",
+        )
 
     if st.session_state.is_running:
-        if st.sidebar.button("Stop Report", type="secondary"):
-            if st.session_state.stop_event is not None:
-                st.session_state.stop_event.set()
-                st.session_state.progress_log.append("🛑 Stop request received. Waiting for safe termination...")
+        with st.sidebar.container(border=True):
+            st.markdown("**Report Generation Status**")
+            st.info("Report generation is running...")
+            if st.sidebar.button("Stop Report", type="secondary"):
+                if st.session_state.stop_event is not None:
+                    st.session_state.stop_event.set()
+                    st.session_state.progress_log.append("🛑 Stop request received. Waiting for safe termination...")
+            st.progress(min(1.0, len(st.session_state.progress_log) / 20)) # Assuming max 20 steps for progress bar
 
     if st.session_state.last_selected_ticker is None:
         st.session_state.last_selected_ticker = selected_ticker
@@ -666,17 +700,11 @@ def main():
     m4.metric("Timestamp (GMT+8)", generation_time)
 
     if st.session_state.custom_instruction_feedback:
-        status, note = st.session_state.custom_instruction_feedback
-        if status == "accepted":
-            st.success(f"Custom instruction accepted and applied: {note}")
-        elif status == "ignored":
-            st.warning("Custom instruction was ignored.")
-            if note:
-                safe_note = html.escape(str(note), quote=True)
-                st.markdown(
-                    f"<span title=\"{safe_note}\">ℹ️ <b>Why ignored?</b> (hover)</span>",
-                    unsafe_allow_html=True,
-                )
+            status, note = st.session_state.custom_instruction_feedback
+            if status == "accepted":
+                st.sidebar.success(f"Instruction accepted: {note}")
+            elif status == "ignored":
+                st.sidebar.warning(f"Instruction ignored: {note}. Reason: The instruction was deemed irrelevant or unsafe by the LLM.")
 
     def render_dynamic_sections() -> None:
         st.markdown("<div class='section-shell'>", unsafe_allow_html=True)
@@ -729,8 +757,21 @@ def main():
                 is_current = i == len(st.session_state.progress_log) - 1 and st.session_state.is_running
                 item_class = "timeline-item current" if is_current else "timeline-item"
                 safe_log = html.escape(str(log))
+                icon = "🚀" if "starting analysis" in safe_log.lower() else \
+                       "📝" if "generating content" in safe_log.lower() else \
+                       "📄" if "executive summary extracted" in safe_log.lower() else \
+                       "📊" if "financial data queried" in safe_log.lower() else \
+                       "🌐" if "web search queries" in safe_log.lower() else \
+                       "✅" if "pdf report saved" in safe_log.lower() else \
+                       "🛑" if "stop request received" in safe_log.lower() else \
+                       "⚙️" if "initializing research engine" in safe_log.lower() else \
+                       "🧠" if "analyzing market trends" in safe_log.lower() else \
+                       "✍️" if "writing report" in safe_log.lower() else \
+                       "✨" if "preparing highlights" in safe_log.lower() else \
+                       "📦" if "converting report to pdf" in safe_log.lower() else \
+                       "⏳" if is_current else "✔️"
                 st.markdown(
-                    f"<div class='{item_class}'><span class='timeline-dot'>{'↻' if is_current else '✓'}</span><span class='timeline-text'>{safe_log}</span></div>",
+                    f"<div class='{item_class}'><span class='timeline-dot'>{icon}</span><span class='timeline-text'>{safe_log}</span></div>",
                     unsafe_allow_html=True,
                 )
         st.markdown("</div>", unsafe_allow_html=True)
@@ -743,34 +784,33 @@ def main():
 
         st.markdown("<div class='snapshot-shell'>", unsafe_allow_html=True)
         st.markdown("### Investment Snapshot")
-        left_col, right_col = st.columns([1.6, 1.0], gap="large")
+        col1, col2 = st.columns([0.6, 0.4])
 
-        with left_col:
-            st.markdown("#### Investment Brief")
-            if has_summary:
-                st.markdown("<div class='summary-preview-card'>", unsafe_allow_html=True)
-                st.markdown(st.session_state.opening_section_preview)
-                st.markdown("</div>", unsafe_allow_html=True)
-            else:
-                st.info("Your investment brief will appear shortly.")
+        with col1:
+            with st.container(border=True):
+                st.markdown("**Investment Brief**")
+                if has_summary:
+                    st.markdown(st.session_state.opening_section_preview)
+                else:
+                    st.info("Your investment brief will appear shortly.")
 
-        with right_col:
-            st.markdown("#### Decision Highlights")
-            if has_points:
-                st.markdown("<div class='highlights-card'>", unsafe_allow_html=True)
-                for idx, point in enumerate(st.session_state.key_points[:5], start=1):
-                    safe_point = html.escape(point)
-                    st.markdown(
-                        f"<div class='keypoint-card'><b>{idx}.</b> {safe_point}</div>",
-                        unsafe_allow_html=True,
-                    )
-                st.markdown("</div>", unsafe_allow_html=True)
-            else:
-                st.info("Top highlights will appear once extraction is complete.")
+        with col2:
+            with st.container(border=True):
+                st.markdown("**Decision Highlights**")
+                if has_points:
+                    for idx, point in enumerate(st.session_state.key_points[:5], start=1):
+                        safe_point = html.escape(point)
+                        st.markdown(
+                            f"<div class='keypoint-card'><b>{idx}.</b> {safe_point}</div>",
+                            unsafe_allow_html=True,
+                        )
+                else:
+                    st.info("Top highlights will appear once extraction is complete.")
         st.markdown("</div>", unsafe_allow_html=True)
 
     if st.sidebar.button("Generate Report", type="primary", disabled=st.session_state.is_running):
-        st.session_state.report_generated = False
+        with st.spinner("Generating investment report..."):
+            st.session_state.report_generated = False
         st.session_state.pdf_path = ""
         st.session_state.progress_log = []
         st.session_state.generated_data = {}
@@ -823,118 +863,143 @@ def main():
         report_size = os.path.getsize(st.session_state.pdf_path) / 1024
         report_size_text = f"PDF size: {report_size:.1f} KB"
 
-    st.sidebar.download_button(
-        label="Download Report (PDF)",
-        data=report_download_data,
-        file_name=report_download_name,
-        mime="application/pdf",
-        type="primary",
-        disabled=not report_download_ready,
-        help=None if report_download_ready else "Generate and complete the report first.",
-    )
-    if report_download_ready:
-        st.sidebar.caption(f"{report_size_text} | Generated (GMT+8): {get_gmt8_timestamp()}")
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("### Presentation Export")
-    st.sidebar.caption(
-        "Create an editable investment meeting deck. Available after report generation is complete."
-    )
-    if st.session_state.ppt_error:
-        st.sidebar.error(
-            "Sorry, we could not generate your presentation this time. "
-            "Please try again in a moment."
+    # Moved download buttons to main content area
+    st.markdown("<div class='download-shell'>", unsafe_allow_html=True)
+    st.markdown("<h2 class='download-heading' style='margin-bottom: 0.75rem;'>Download Report & Presentation</h2>", unsafe_allow_html=True)
+    download_col1, download_col2 = st.columns(2)
+
+    with download_col1:
+        report_download_ready = (
+            st.session_state.report_generated
+            and not st.session_state.is_running
+            and bool(st.session_state.pdf_path)
+            and os.path.exists(st.session_state.pdf_path)
         )
-        st.sidebar.caption(st.session_state.ppt_error)
+        report_download_data = b""
+        report_download_name = "Investment_Report.pdf"
+        report_size_text = ""
+        if report_download_ready:
+            report_download_name = os.path.basename(st.session_state.pdf_path)
+            with open(st.session_state.pdf_path, "rb") as pdf_file:
+                report_download_data = pdf_file.read()
+            report_size = os.path.getsize(st.session_state.pdf_path) / 1024
+            report_size_text = f"PDF size: {report_size:.1f} KB"
 
-    report_is_ready = st.session_state.report_generated and not st.session_state.is_running
-    if st.sidebar.button(
-        "Generate Presentation (PPTX)",
-        type="primary",
-        disabled=st.session_state.is_generating_ppt or not report_is_ready,
-        help=None if report_is_ready else "Finish generating the report first.",
-    ):
-        report_md_path = st.session_state.report_md_path or f"generated_reports/{selected_ticker}_AgentInvest_Report.md"
-        if not os.path.exists(report_md_path):
-            st.session_state.ppt_error = "Markdown report was not found. Please regenerate the report first."
-            st.session_state.ppt_ready = False
-        else:
-            st.session_state.is_generating_ppt = True
-            st.session_state.ppt_error = None
-            try:
-                from ppt_export import build_professional_pptx
-                AgentInvest = get_agent_class()
+        st.download_button(
+            label="Download Report (PDF)",
+            data=report_download_data,
+            file_name=report_download_name,
+            mime="application/pdf",
+            type="primary",
+            disabled=not report_download_ready,
+            help=None if report_download_ready else "Generate and complete the report first.",
+        )
+        if report_download_ready:
+            st.caption(f"{report_size_text} | Generated (GMT+8): {get_gmt8_timestamp()}")
 
-                with st.spinner("Generating professional presentation..."):
-                    with open(report_md_path, "r", encoding="utf-8") as md_file:
-                        report_markdown = md_file.read()
-                    company_name = st.session_state.company_name or selected_ticker
-                    visual_deck_spec = None
-                    try:
-                        planner_agent = AgentInvest(verbose_agent=False)
-                        visual_deck_spec = asyncio.run(
-                            planner_agent.generate_visual_deck_spec(
-                                company_name=company_name,
-                                ticker=selected_ticker,
-                                report_markdown=report_markdown,
-                                executive_summary=st.session_state.executive_summary_preview,
-                                key_points=st.session_state.key_points[:5],
-                            )
-                        )
-                    except Exception:
+    with download_col2:
+        st.markdown("### Presentation Export")
+        st.caption(
+            "Create an editable investment meeting deck. Available after report generation is complete."
+        )
+        if st.session_state.ppt_error:
+            st.error(
+                "Sorry, we could not generate your presentation this time. "
+                "Please try again in a moment."
+            )
+            st.caption(st.session_state.ppt_error)
+
+        report_is_ready = st.session_state.report_generated and not st.session_state.is_running
+        if st.button(
+            "Generate Presentation (PPTX)",
+            type="primary",
+            disabled=st.session_state.is_generating_ppt or not report_is_ready,
+            help=None if report_is_ready else "Finish generating the report first.",
+        ):
+            report_md_path = st.session_state.report_md_path or f"generated_reports/{selected_ticker}_AgentInvest_Report.md"
+            if not os.path.exists(report_md_path):
+                st.session_state.ppt_error = "Markdown report was not found. Please regenerate the report first."
+                st.session_state.ppt_ready = False
+            else:
+                st.session_state.is_generating_ppt = True
+                st.session_state.ppt_error = None
+                try:
+                    from ppt_export import build_professional_pptx
+                    AgentInvest = get_agent_class()
+
+                    with st.spinner("Generating professional presentation..."):
+                        with open(report_md_path, "r", encoding="utf-8") as md_file:
+                            report_markdown = md_file.read()
+                        company_name = st.session_state.company_name or selected_ticker
                         visual_deck_spec = None
+                        try:
+                            planner_agent = AgentInvest(verbose_agent=False)
+                            visual_deck_spec = asyncio.run(
+                                planner_agent.generate_visual_deck_spec(
+                                    company_name=company_name,
+                                    ticker=selected_ticker,
+                                    report_markdown=report_markdown,
+                                    executive_summary=st.session_state.executive_summary_preview,
+                                    key_points=st.session_state.key_points[:5],
+                                )
+                            )
+                        except Exception:
+                            visual_deck_spec = None
 
-                    output_ppt_path = f"generated_reports/{selected_ticker}_AgentInvest_Presentation.pptx"
-                    build_professional_pptx(
-                        report_markdown=report_markdown,
-                        output_path=output_ppt_path,
-                        company_name=company_name,
-                        ticker=selected_ticker,
-                        key_points=st.session_state.key_points[:5],
-                        executive_summary=st.session_state.executive_summary_preview,
-                        chartjs_src=os.getenv("CHARTJS_SRC", None),
-                        visual_deck_spec=visual_deck_spec,
-                        style_profile=presentation_style,
+                        output_ppt_path = f"generated_reports/{selected_ticker}_AgentInvest_Presentation.pptx"
+                        build_professional_pptx(
+                            report_markdown=report_markdown,
+                            output_path=output_ppt_path,
+                            company_name=company_name,
+                            ticker=selected_ticker,
+                            key_points=st.session_state.key_points[:5],
+                            executive_summary=st.session_state.executive_summary_preview,
+                            chartjs_src=os.getenv("CHARTJS_SRC", None),
+                            visual_deck_spec=visual_deck_spec,
+                            style_profile=presentation_style,
+                        )
+                        st.session_state.ppt_path = output_ppt_path
+                        st.session_state.ppt_ready = True
+                except ImportError:
+                    st.session_state.ppt_error = (
+                        "PPT export dependency is missing. Please install `python-pptx` and retry."
                     )
-                    st.session_state.ppt_path = output_ppt_path
-                    st.session_state.ppt_ready = True
-            except ImportError:
-                st.session_state.ppt_error = (
-                    "PPT export dependency is missing. Please install `python-pptx` and retry."
-                )
-                st.session_state.ppt_ready = False
-            except Exception as exc:
-                st.session_state.ppt_error = f"PPT generation failed. Please retry. Details: {exc}"
-                st.session_state.ppt_ready = False
-            finally:
-                st.session_state.is_generating_ppt = False
+                    st.session_state.ppt_ready = False
+                except Exception as exc:
+                    st.session_state.ppt_error = f"PPT generation failed. Please retry. Details: {exc}"
+                    st.session_state.ppt_ready = False
+                finally:
+                    st.session_state.is_generating_ppt = False
 
-    ppt_download_ready = (
-        st.session_state.ppt_ready
-        and bool(st.session_state.ppt_path)
-        and os.path.exists(st.session_state.ppt_path)
-    )
-    ppt_download_data = b""
-    ppt_download_name = "Investment_Presentation.pptx"
-    ppt_size_text = ""
-    if ppt_download_ready:
-        ppt_download_name = os.path.basename(st.session_state.ppt_path)
-        with open(st.session_state.ppt_path, "rb") as ppt_file:
-            ppt_download_data = ppt_file.read()
-        ppt_size = os.path.getsize(st.session_state.ppt_path) / 1024
-        ppt_size_text = f"PPT size: {ppt_size:.1f} KB"
+        ppt_download_ready = (
+            st.session_state.ppt_ready
+            and bool(st.session_state.ppt_path)
+            and os.path.exists(st.session_state.ppt_path)
+        )
+        ppt_download_data = b""
+        ppt_download_name = "Investment_Presentation.pptx"
+        ppt_size_text = ""
+        if ppt_download_ready:
+            ppt_download_name = os.path.basename(st.session_state.ppt_path)
+            with open(st.session_state.ppt_path, "rb") as ppt_file:
+                ppt_download_data = ppt_file.read()
+            ppt_size = os.path.getsize(st.session_state.ppt_path) / 1024
+            ppt_size_text = f"PPT size: {ppt_size:.1f} KB"
 
-    st.sidebar.download_button(
-        label="Download Presentation (PPTX)",
-        data=ppt_download_data,
-        file_name=ppt_download_name,
-        mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        type="primary",
-        disabled=not ppt_download_ready,
-        help=None if ppt_download_ready else "Generate the presentation first.",
-    )
-    if ppt_download_ready:
-        st.sidebar.caption(ppt_size_text)
+        st.download_button(
+            label="Download Presentation (PPTX)",
+            data=ppt_download_data,
+            file_name=ppt_download_name,
+            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            type="primary",
+            disabled=not ppt_download_ready,
+            help=None if ppt_download_ready else "Generate the presentation first.",
+        )
+        if ppt_download_ready:
+            st.caption(ppt_size_text)
+    st.markdown("</div>", unsafe_allow_html=True)
 
     if st.session_state.run_error and not st.session_state.is_running:
         st.error(f"Report generation failed: {st.session_state.run_error}")
