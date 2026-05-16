@@ -1,6 +1,6 @@
 
 """
-This module contains the AgentInvest class, which is responsible for generating a financial report for a given company.
+This module contains the InvestIQ class, which is responsible for generating a financial report for a given company.
 """
 import os
 import asyncio
