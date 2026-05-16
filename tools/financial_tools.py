@@ -37,7 +37,7 @@ class FinancialToolSpec(BaseToolSpec):
         try:
             stock = yf.Ticker(ticker)
             info = stock.info
-            return info.get("longName", ticker)
+            return info.get("longName") or info.get("shortName") or ticker
         except Exception as e:
             logger.error(f"Error fetching company name for {ticker}: {e}")
             return ticker
