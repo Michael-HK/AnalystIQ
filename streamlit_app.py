@@ -1,4 +1,7 @@
 
+import base64
+import re
+import urllib.parse
 import streamlit as st
 import asyncio
 import os
@@ -8,12 +11,18 @@ import threading
 from queue import Queue, Empty
 from datetime import datetime, timezone, timedelta
 from tickers import TICKERS
+from report_viewer import load_report_markdown, build_report_viewer_html
 
 GMT_PLUS_8 = timezone(timedelta(hours=8))
+REPORT_TYPE_OPTIONS = {
+    "Investment Report": "investment",
+    "Credit Analysis Report": "credit",
+}
+REPORT_TYPE_LABELS = {value: key for key, value in REPORT_TYPE_OPTIONS.items()}
 
 # --- Page Configuration ---
 st.set_page_config(
-    page_title="InvestIQ",
+    page_title="AnalystIQ",
     page_icon="💼",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -67,9 +76,9 @@ st.markdown("""
             font-family: var(--font-family);
         }
         .stMainBlockContainer {
-            max-width: 1320px;
-            padding-top: 1.3rem;
-            padding-bottom: 2.2rem;
+            max-width: 1360px;
+            padding-top: 1.15rem;
+            padding-bottom: 2.35rem;
         }
         h1, h2, h3, h4 {
             font-family: var(--font-family);
@@ -100,10 +109,11 @@ st.markdown("""
             font-size: 0.88rem; /* Slightly smaller */
         }
         .hero-card {
-            padding: var(--space-6) var(--space-6);            border-radius: var(--radius-lg);
+            padding: var(--space-6) var(--space-6);
+            border-radius: var(--radius-lg);
             background: linear-gradient(160deg, #ffffff 0%, #f8fbff 100%);
             border: 1px solid var(--border-subtle);
-            box-shadow: var(--shadow-medium);
+            box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
             margin-bottom: var(--space-6);
         }
         .hero-kicker {
@@ -188,7 +198,7 @@ st.markdown("""
             border: 1px solid var(--border-subtle);
             border-radius: var(--radius-md);
             background: var(--surface-primary);
-            padding: var(--space-4);
+            padding: var(--space-5);
             box-shadow: var(--shadow-soft);
         }
         .timeline-item {
@@ -233,29 +243,118 @@ st.markdown("""
             overflow-wrap: anywhere;
             word-break: break-word;
         }
+        .snapshot-citation-link {
+            position: relative;
+            font-weight: 600;
+            color: var(--accent-primary);
+            text-decoration: none;
+            border-bottom: 1px dashed rgba(37, 99, 235, 0.55);
+        }
+        .snapshot-citation-link:hover {
+            color: var(--accent-primary-dark);
+            border-bottom-color: var(--accent-primary-dark);
+        }
+        .snapshot-citation-link::after {
+            content: attr(data-preview);
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            bottom: calc(100% + 0.3rem);
+            min-width: 220px;
+            max-width: 380px;
+            padding: 0.45rem 0.55rem;
+            border-radius: var(--radius-sm);
+            background: #0f172a;
+            color: #f8fafc;
+            border: 1px solid var(--border-strong);
+            font-size: 0.75rem;
+            line-height: 1.35;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.15s ease, visibility 0.15s ease;
+            pointer-events: none;
+            z-index: 25;
+            white-space: normal;
+            word-break: break-word;
+            box-shadow: var(--shadow-medium);
+        }
+        .snapshot-citation-link:hover::after {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .report-viewer-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .report-viewer-modal-content {
+            background: var(--surface-primary);
+            border-radius: var(--radius-lg);
+            width: 90%;
+            height: 90%;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .report-viewer-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: var(--space-4) var(--space-5);
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .report-viewer-modal-body {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: var(--space-4) var(--space-5);
+        }
+
+        .report-viewer-close-button {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: var(--text-muted);
+        }
+
+        .report-viewer-close-button:hover {
+            color: var(--text-primary);
+        }
         .section-shell {
             border: 1px solid var(--border-subtle);
             border-radius: var(--radius-md);
             background: var(--surface-primary);
-            box-shadow: var(--shadow-soft);
-            padding: var(--space-4) var(--space-5);
-            margin-bottom: var(--space-4);
+            box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+            padding: var(--space-5) var(--space-6);
+            margin-bottom: var(--space-5);
         }
         .snapshot-shell {
             border: 1px solid var(--border-subtle);
             border-radius: var(--radius-md);
             background: var(--surface-primary);
-            box-shadow: var(--shadow-soft);
-            padding: var(--space-4) var(--space-5);
+            box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+            padding: var(--space-5) var(--space-6);
             margin-top: var(--space-4);
         }
         .download-shell {
             border: 1px solid var(--border-subtle);
             border-radius: var(--radius-md);
             background: var(--surface-primary);
-            box-shadow: var(--shadow-soft);
-            padding: var(--space-5);
-            margin-top: var(--space-3);
+            box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+            padding: var(--space-6);
+            margin-top: var(--space-4);
         }
         .download-heading {
             margin-top: 0;
@@ -346,12 +445,26 @@ st.markdown("""
             border: 1px solid var(--border-subtle);
             border-radius: var(--radius-md);
             background: linear-gradient(180deg, #ffffff 0%, #f9fbff 100%);
-            box-shadow: var(--shadow-soft);
+            box-shadow: 0 6px 20px rgba(15, 23, 42, 0.06);
             padding: 0.8rem 0.95rem;
             min-height: 7rem;
             display: flex;
             flex-direction: column;
             justify-content: flex-start;
+        }
+        .immersive-view-shell {
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-lg);
+            background: var(--surface-primary);
+            box-shadow: 0 16px 36px rgba(15, 23, 42, 0.1);
+            padding: var(--space-5);
+            margin-top: var(--space-4);
+            margin-bottom: var(--space-5);
+        }
+        .immersive-view-sub {
+            color: var(--text-muted);
+            margin-top: -0.25rem;
+            margin-bottom: var(--space-3);
         }
         .status-metric-label {
             color: var(--text-muted);
@@ -390,9 +503,9 @@ st.markdown("""
 # --- Helper Functions ---
 @st.cache_resource(show_spinner=False)
 def get_agent_class():
-    """Lazily import AgentInvest to keep initial page render responsive."""
-    from agent import AgentInvest
-    return AgentInvest
+    """Lazily import AnalystIQ to keep initial page render responsive."""
+    from agent import AnalystIQ
+    return AnalystIQ
 
 
 @st.cache_resource(show_spinner=False)
@@ -408,6 +521,7 @@ def warmup_agent_runtime() -> bool:
 
 def run_report_worker(
     ticker: str,
+    report_type: str,
     custom_instruction: str,
     progress_queue: Queue,
     stop_event: threading.Event,
@@ -418,25 +532,29 @@ def run_report_worker(
         progress_queue.put({"type": "progress", "payload": payload})
 
     try:
-        update_ui({"message": "⚙️ Initializing research engine..."})
+        report_label = REPORT_TYPE_LABELS.get(report_type, "Investment Report")
+        update_ui({"message": f"⚙️ Initializing {report_label} engine..."})
         AgentInvest = get_agent_class()
         agent = AgentInvest(verbose_agent=False)
         asyncio.run(
             agent.run(
                 ticker=ticker,
+                report_type=report_type,
                 progress_callback=update_ui,
                 custom_instruction=custom_instruction,
                 stop_event=stop_event,
             )
         )
+        report_slug = "CreditAnalysis" if report_type == "credit" else "AnalystIQ"
         if stop_event.is_set():
             progress_queue.put({"type": "stopped"})
         else:
             progress_queue.put(
                 {
                     "type": "completed",
-                    "pdf_path": f"generated_reports/{ticker}_AgentInvest_Report.pdf",
-                    "md_path": f"generated_reports/{ticker}_AgentInvest_Report.md",
+                    "report_type": report_type,
+                    "pdf_path": f"generated_reports/{ticker}_{report_slug}_Report.pdf",
+                    "md_path": f"generated_reports/{ticker}_{report_slug}_Report.md",
                 }
             )
     except asyncio.CancelledError:
@@ -473,6 +591,10 @@ def initialize_session_state() -> None:
         "is_generating_ppt": False,
         "company_name": "",
         "pdf_in_progress": False,
+        "selected_report_type": "investment",
+        "last_selected_report_type": None,
+        "is_report_viewer_open": False,
+        "report_view_ready": False,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -481,6 +603,45 @@ def initialize_session_state() -> None:
 def get_gmt8_timestamp() -> str:
     """Return current timestamp in GMT+8."""
     return datetime.now(GMT_PLUS_8).strftime("%Y-%m-%d %H:%M")
+
+
+def _build_reference_map(markdown_text: str) -> dict[str, dict[str, str]]:
+    refs: dict[str, dict[str, str]] = {}
+    pattern = r"\*\*\[(\d+)\]\*\*\s*(?:\((.*?)\))?\s*\[link\]\((https?://[^)]+)\)"
+    for number, title, url in re.findall(pattern, markdown_text):
+        parsed = urllib.parse.urlparse(url.strip())
+        domain = parsed.netloc.removeprefix("www.")
+        refs[number] = {
+            "url": url.strip(),
+            "title": (title or url).strip(),
+            "domain": domain,
+        }
+    return refs
+
+
+def _decorate_snapshot_citations(snapshot_markdown: str, report_markdown: str) -> str:
+    if not snapshot_markdown.strip():
+        return snapshot_markdown
+    references = _build_reference_map(report_markdown)
+    if not references:
+        return snapshot_markdown
+
+    def _replace(match: re.Match[str]) -> str:
+        ref_num = match.group(1)
+        ref_data = references.get(ref_num)
+        if not ref_data:
+            return match.group(0)
+        title = html.escape(ref_data["title"])
+        domain = html.escape(ref_data.get("domain", ""))
+        preview = f"{title} ({domain})" if domain else title
+        preview_attr = html.escape(preview, quote=True)
+        url = html.escape(ref_data["url"], quote=True)
+        return (
+            f'<a href="{url}" class="snapshot-citation-link" '
+            f'data-preview="{preview_attr}" target="_blank" rel="noopener noreferrer">[{ref_num}]</a>'
+        )
+
+    return re.sub(r"\[(\d+)\]", _replace, snapshot_markdown)
 
 # --- Main Application ---
 def main():
@@ -541,6 +702,12 @@ def main():
                         st.session_state.key_points = [str(item).strip() for item in data if str(item).strip()]
                     else:
                         st.session_state.key_points = [str(data).strip()] if str(data).strip() else []
+                if "markdown report saved" in message_lower:
+                    md_path = str(data).strip() if data else ""
+                    if md_path:
+                        st.session_state.report_md_path = md_path
+                    if st.session_state.report_md_path and os.path.exists(st.session_state.report_md_path):
+                        st.session_state.report_view_ready = True
                 if "identified company" in message_lower and data:
                     st.session_state.company_name = str(data).strip()
                 if "using cached company name" in message_lower and data:
@@ -548,8 +715,12 @@ def main():
             elif event_type == "completed":
                 st.session_state.report_generated = True
                 st.session_state.run_status = "Completed"
+                st.session_state.selected_report_type = event.get("report_type", st.session_state.selected_report_type)
                 st.session_state.pdf_path = event.get("pdf_path", "")
                 st.session_state.report_md_path = event.get("md_path", "")
+                st.session_state.report_view_ready = bool(
+                    st.session_state.report_md_path and os.path.exists(st.session_state.report_md_path)
+                )
                 st.session_state.pdf_in_progress = False
                 st.session_state.run_error = None
                 st.session_state.pending_error = None
@@ -562,12 +733,14 @@ def main():
                 st.session_state.executive_summary_preview = ""
                 st.session_state.key_points = []
                 st.session_state.report_md_path = ""
+                st.session_state.report_view_ready = False
                 st.session_state.ppt_path = ""
                 st.session_state.ppt_ready = False
                 st.session_state.ppt_error = None
                 st.session_state.is_generating_ppt = False
                 st.session_state.company_name = ""
                 st.session_state.pdf_in_progress = False
+                st.session_state.is_report_viewer_open = False
                 st.session_state.progress_log.append("🛑 Report generation stopped by user.")
             elif event_type == "error":
                 st.session_state.pending_error = (
@@ -586,23 +759,23 @@ def main():
     st.markdown("""
     <div class="hero-card">
       <span class="hero-kicker">Institutional workflow</span>
-      <h2 style="margin:0;">InvestIQ Studio</h2>
+      <h2 style="margin:0;">AnalystIQ Studio</h2>
       <p class="subtle-text" style="margin:0.4rem 0 0 0;">
-        Built for investment teams to move from ticker selection to decision-ready materials with consistent, presentation-ready output.
+        Built for analyst teams to move from ticker selection to decision-ready materials across investment and credit workflows.
       </p>
       <ul class="hero-list">
-        <li><b>Investment-ready brief:</b> Generate a professional report with company context, structured analysis, and references.</li>
-        <li><b>Live decision insights:</b> Review an executive summary and top highlights in the app before downloading files.</li>
-        <li><b>Editable presentation export:</b> Create and download a <b>.pptx</b> deck (up to 10 slides) for internal edits and investment meetings.</li>
+        <li><b>Dual report modes:</b> Generate either an <b>Investment Report</b> or a <b>Credit Analysis Report</b> for the selected company.</li>
+        <li><b>Decision-ready insights:</b> Review executive summary and key highlights in-app before exporting deliverables.</li>
+        <li><b>Editable presentation export:</b> Create and download a <b>.pptx</b> deck (up to 10 slides) for internal review meetings.</li>
       </ul>
       <p class="hero-footnote">
-        <b>How to navigate:</b> Select a ticker in the sidebar, click <b>Generate Report</b>, follow the <b>Research Journey</b>,
-        review the <b>Investment Snapshot</b>, then download the PDF and optional editable PowerPoint.
+        <b>How to navigate:</b> Select a ticker and report type in the sidebar, click <b>Generate Report</b>, follow the <b>Research Journey</b>,
+        review the <b>Report Snapshot</b>, then download the PDF and optional editable PowerPoint.
       </p>
     </div>
     """, unsafe_allow_html=True)
 
-    st.sidebar.markdown("<h2 style='margin-bottom:0;'>InvestIQ Studio</h2>", unsafe_allow_html=True)
+    st.sidebar.markdown("<h2 style='margin-bottom:0;'>AnalystIQ Studio</h2>", unsafe_allow_html=True)
     st.sidebar.markdown("""<p style='font-size:0.9rem; color:var(--text-muted); margin-bottom: 1.5rem;'>Generate comprehensive investment reports.</p>""", unsafe_allow_html=True)
 
     st.sidebar.markdown("### Report Configuration")
@@ -611,6 +784,13 @@ def main():
         if not warmup_ok:
             st.caption("Preparing report runtime components...")
         selected_ticker = st.selectbox("Select a Stock Ticker:", TICKERS, label_visibility="collapsed")
+        report_type_label = st.selectbox(
+            "Report Type",
+            list(REPORT_TYPE_OPTIONS.keys()),
+            index=0,
+            help="Choose between investment and credit analysis report generation modes.",
+        )
+        selected_report_type = REPORT_TYPE_OPTIONS[report_type_label]
     
     st.sidebar.markdown("### Customization")
     with st.sidebar.expander("Advanced Options", expanded=True):
@@ -646,11 +826,18 @@ def main():
 
     if st.session_state.last_selected_ticker is None:
         st.session_state.last_selected_ticker = selected_ticker
+    if st.session_state.last_selected_report_type is None:
+        st.session_state.last_selected_report_type = selected_report_type
     elif (
-        selected_ticker != st.session_state.last_selected_ticker
+        (
+            selected_ticker != st.session_state.last_selected_ticker
+            or selected_report_type != st.session_state.last_selected_report_type
+        )
         and not st.session_state.is_running
     ):
         st.session_state.last_selected_ticker = selected_ticker
+        st.session_state.last_selected_report_type = selected_report_type
+        st.session_state.selected_report_type = selected_report_type
         st.session_state.run_status = "Idle"
         st.session_state.report_generated = False
         st.session_state.pdf_path = ""
@@ -663,12 +850,14 @@ def main():
         st.session_state.executive_summary_preview = ""
         st.session_state.key_points = []
         st.session_state.report_md_path = ""
+        st.session_state.report_view_ready = False
         st.session_state.ppt_path = ""
         st.session_state.ppt_ready = False
         st.session_state.ppt_error = None
         st.session_state.is_generating_ppt = False
         st.session_state.company_name = ""
         st.session_state.pdf_in_progress = False
+        st.session_state.is_report_viewer_open = False
 
     generation_time = get_gmt8_timestamp()
     st.markdown("<p class='kpi-intro'>Live run diagnostics and generation status</p>", unsafe_allow_html=True)
@@ -697,7 +886,7 @@ def main():
         )
 
     render_status_metric()
-    m4.metric("Timestamp (GMT+8)", generation_time)
+    m4.metric("Report Type", REPORT_TYPE_LABELS.get(selected_report_type, "Investment Report"))
 
     if st.session_state.custom_instruction_feedback:
             status, note = st.session_state.custom_instruction_feedback
@@ -708,12 +897,8 @@ def main():
 
     def render_dynamic_sections() -> None:
         st.markdown("<div class='section-shell'>", unsafe_allow_html=True)
-        structure_area, web_queries_area, financial_queries_area = st.tabs(
-            ["Report Roadmap", "Market Signals", "Financial Highlights"]
-        )
-
-        with structure_area:
-            st.markdown("### Storyline Outline")
+        snapshot_ready = bool(st.session_state.opening_section_preview.strip()) or bool(st.session_state.key_points)
+        with st.expander("Storyline Outline", expanded=not snapshot_ready):
             structure = st.session_state.generated_data.get("structure", [])
             if structure:
                 for section in structure:
@@ -724,16 +909,14 @@ def main():
             else:
                 st.caption("Your report storyline will appear once planning is completed.")
 
-        with web_queries_area:
-            st.markdown("### Market Research Focus")
+        with st.expander("Market Research Focus", expanded=not snapshot_ready):
             web_queries = st.session_state.generated_data.get("web_queries", [])
             for query in web_queries:
                 st.markdown(f"<div class='generated-item'>{query}</div>", unsafe_allow_html=True)
             if not web_queries:
                 st.caption("Market research themes will appear here.")
 
-        with financial_queries_area:
-            st.markdown("### Financial Analysis Focus")
+        with st.expander("Financial Analysis Focus", expanded=not snapshot_ready):
             financial_queries = st.session_state.generated_data.get("financial_queries", [])
             for query in financial_queries:
                 st.markdown(
@@ -746,34 +929,60 @@ def main():
 
     def render_research_journey_panel() -> None:
         st.markdown("<div class='timeline-panel'>", unsafe_allow_html=True)
-        st.markdown("### InvestIQ Reasoning")
+        st.markdown("### AnalystIQ Reasoning")
+
+        can_view_report = (
+            st.session_state.report_view_ready
+            and bool(st.session_state.report_md_path)
+            and os.path.exists(st.session_state.report_md_path)
+        )
+        viewer_col1, viewer_col2 = st.columns(2)
+        with viewer_col1:
+            if st.button(
+                "View Report",
+                type="primary" if can_view_report else "secondary",
+                disabled=not can_view_report,
+                help=None if can_view_report else "Generate and complete the report first.",
+                key="view_report_button"
+            ):
+                st.session_state.is_report_viewer_open = True
+        with viewer_col2:
+            if st.button(
+                "Close Viewer",
+                type="secondary",
+                disabled=not st.session_state.is_report_viewer_open,
+                key="close_report_button"
+            ):
+                st.session_state.is_report_viewer_open = False
+
         if not st.session_state.progress_log:
             st.info("Choose your ticker and click `Generate Report` to begin.")
             st.markdown("</div>", unsafe_allow_html=True)
             return
 
         with st.expander("View Activity Timeline", expanded=True):
-            for i, log in enumerate(st.session_state.progress_log):
-                is_current = i == len(st.session_state.progress_log) - 1 and st.session_state.is_running
-                item_class = "timeline-item current" if is_current else "timeline-item"
-                safe_log = html.escape(str(log))
-                icon = "🚀" if "starting analysis" in safe_log.lower() else \
-                       "📝" if "generating content" in safe_log.lower() else \
-                       "📄" if "executive summary extracted" in safe_log.lower() else \
-                       "📊" if "financial data queried" in safe_log.lower() else \
-                       "🌐" if "web search queries" in safe_log.lower() else \
-                       "✅" if "pdf report saved" in safe_log.lower() else \
-                       "🛑" if "stop request received" in safe_log.lower() else \
-                       "⚙️" if "initializing research engine" in safe_log.lower() else \
-                       "🧠" if "analyzing market trends" in safe_log.lower() else \
-                       "✍️" if "writing report" in safe_log.lower() else \
-                       "✨" if "preparing highlights" in safe_log.lower() else \
-                       "📦" if "converting report to pdf" in safe_log.lower() else \
-                       "⏳" if is_current else "✔️"
-                st.markdown(
-                    f"<div class='{item_class}'><span class='timeline-dot'>{icon}</span><span class='timeline-text'>{safe_log}</span></div>",
-                    unsafe_allow_html=True,
-                )
+            with st.container(height=360, border=False):
+                for i, log in enumerate(st.session_state.progress_log):
+                    is_current = i == len(st.session_state.progress_log) - 1 and st.session_state.is_running
+                    item_class = "timeline-item current" if is_current else "timeline-item"
+                    safe_log = html.escape(str(log))
+                    icon = "🚀" if "starting analysis" in safe_log.lower() else \
+                           "📝" if "generating content" in safe_log.lower() else \
+                           "📄" if "executive summary extracted" in safe_log.lower() else \
+                           "📊" if "financial data queried" in safe_log.lower() else \
+                           "🌐" if "web search queries" in safe_log.lower() else \
+                           "✅" if "pdf report saved" in safe_log.lower() else \
+                           "🛑" if "stop request received" in safe_log.lower() else \
+                           "⚙️" if "initializing research engine" in safe_log.lower() else \
+                           "🧠" if "analyzing market trends" in safe_log.lower() else \
+                           "✍️" if "writing report" in safe_log.lower() else \
+                           "✨" if "preparing highlights" in safe_log.lower() else \
+                           "📦" if "converting report to pdf" in safe_log.lower() else \
+                           "⏳" if is_current else "✔️"
+                    st.markdown(
+                        f"<div class='{item_class}'><span class='timeline-dot'>{icon}</span><span class='timeline-text'>{safe_log}</span></div>",
+                        unsafe_allow_html=True,
+                    )
         st.markdown("</div>", unsafe_allow_html=True)
 
     def render_investment_snapshot() -> None:
@@ -790,7 +999,12 @@ def main():
             with st.container(border=True):
                 st.markdown("**Investment Brief**")
                 if has_summary:
-                    st.markdown(st.session_state.opening_section_preview)
+                    report_markdown = load_report_markdown(st.session_state.report_md_path)
+                    decorated_brief = _decorate_snapshot_citations(
+                        st.session_state.opening_section_preview,
+                        report_markdown,
+                    )
+                    st.markdown(decorated_brief, unsafe_allow_html=True)
                 else:
                     st.info("Your investment brief will appear shortly.")
 
@@ -808,8 +1022,41 @@ def main():
                     st.info("Top highlights will appear once extraction is complete.")
         st.markdown("</div>", unsafe_allow_html=True)
 
+    def render_report_viewer_modal() -> None:
+        if not st.session_state.is_report_viewer_open:
+            return
+
+        report_markdown = load_report_markdown(st.session_state.report_md_path)
+        if not report_markdown:
+            st.warning("Report markdown could not be loaded for rendering.")
+            return
+
+        report_label = REPORT_TYPE_LABELS.get(st.session_state.selected_report_type, "Report")
+        viewer_html = build_report_viewer_html(report_markdown, report_label=report_label)
+        html_bytes = viewer_html.encode("utf-8")
+        data_uri = "data:text/html;base64," + base64.b64encode(html_bytes).decode("ascii")
+
+        st.markdown("<div class='immersive-view-shell'>", unsafe_allow_html=True)
+        header_col, action_col = st.columns([0.82, 0.18])
+        with header_col:
+            st.markdown("### Report Viewer")
+            st.markdown(
+                f"<p class='immersive-view-sub'>{report_label} | premium reading mode</p>",
+                unsafe_allow_html=True,
+            )
+        with action_col:
+            st.markdown("<div style='height:0.8rem;'></div>", unsafe_allow_html=True)
+            if st.button("Exit Viewer", key="close_full_report_viewer_btn", type="secondary"):
+                st.session_state.is_report_viewer_open = False
+                st.rerun()
+
+        st.iframe(data_uri, height=1020)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+
     if st.sidebar.button("Generate Report", type="primary", disabled=st.session_state.is_running):
-        with st.spinner("Generating investment report..."):
+        report_label = REPORT_TYPE_LABELS.get(selected_report_type, "Investment Report")
+        with st.spinner(f"Generating {report_label.lower()}..."):
             st.session_state.report_generated = False
         st.session_state.pdf_path = ""
         st.session_state.progress_log = []
@@ -823,13 +1070,17 @@ def main():
         st.session_state.executive_summary_preview = ""
         st.session_state.key_points = []
         st.session_state.report_md_path = ""
+        st.session_state.report_view_ready = False
         st.session_state.ppt_path = ""
         st.session_state.ppt_ready = False
         st.session_state.ppt_error = None
         st.session_state.is_generating_ppt = False
         st.session_state.company_name = ""
         st.session_state.pdf_in_progress = False
+        st.session_state.is_report_viewer_open = False
         st.session_state.last_selected_ticker = selected_ticker
+        st.session_state.selected_report_type = selected_report_type
+        st.session_state.last_selected_report_type = selected_report_type
         st.session_state.progress_queue = Queue()
         st.session_state.stop_event = threading.Event()
         render_status_metric()
@@ -837,6 +1088,7 @@ def main():
             target=run_report_worker,
             args=(
                 selected_ticker,
+                selected_report_type,
                 custom_instruction_input,
                 st.session_state.progress_queue,
                 st.session_state.stop_event,
@@ -854,7 +1106,7 @@ def main():
         and os.path.exists(st.session_state.pdf_path)
     )
     report_download_data = b""
-    report_download_name = "Investment_Report.pdf"
+    report_download_name = "Credit_Analysis_Report.pdf" if st.session_state.selected_report_type == "credit" else "Investment_Report.pdf"
     report_size_text = ""
     if report_download_ready:
         report_download_name = os.path.basename(st.session_state.pdf_path)
@@ -878,7 +1130,7 @@ def main():
             and os.path.exists(st.session_state.pdf_path)
         )
         report_download_data = b""
-        report_download_name = "Investment_Report.pdf"
+        report_download_name = "Credit_Analysis_Report.pdf" if st.session_state.selected_report_type == "credit" else "Investment_Report.pdf"
         report_size_text = ""
         if report_download_ready:
             report_download_name = os.path.basename(st.session_state.pdf_path)
@@ -902,7 +1154,7 @@ def main():
     with download_col2:
         st.markdown("### Presentation Export")
         st.caption(
-            "Create an editable investment meeting deck. Available after report generation is complete."
+            "Create an editable presentation deck. Available after report generation is complete."
         )
         if st.session_state.ppt_error:
             st.error(
@@ -918,7 +1170,8 @@ def main():
             disabled=st.session_state.is_generating_ppt or not report_is_ready,
             help=None if report_is_ready else "Finish generating the report first.",
         ):
-            report_md_path = st.session_state.report_md_path or f"generated_reports/{selected_ticker}_AgentInvest_Report.md"
+            report_slug = "CreditAnalysis" if st.session_state.selected_report_type == "credit" else "AnalystIQ"
+            report_md_path = st.session_state.report_md_path or f"generated_reports/{selected_ticker}_{report_slug}_Report.md"
             if not os.path.exists(report_md_path):
                 st.session_state.ppt_error = "Markdown report was not found. Please regenerate the report first."
                 st.session_state.ppt_ready = False
@@ -948,7 +1201,7 @@ def main():
                         except Exception:
                             visual_deck_spec = None
 
-                        output_ppt_path = f"generated_reports/{selected_ticker}_AgentInvest_Presentation.pptx"
+                        output_ppt_path = f"generated_reports/{selected_ticker}_AnalystIQ_Presentation.pptx"
                         build_professional_pptx(
                             report_markdown=report_markdown,
                             output_path=output_ppt_path,
@@ -1004,12 +1257,15 @@ def main():
     if st.session_state.run_error and not st.session_state.is_running:
         st.error(f"Report generation failed: {st.session_state.run_error}")
 
-    left_content_col, right_timeline_col = st.columns([2.1, 1.15], gap="large")
-    with left_content_col:
-        render_dynamic_sections()
-        render_investment_snapshot()
-    with right_timeline_col:
-        render_research_journey_panel()
+    if st.session_state.is_report_viewer_open:
+        render_report_viewer_modal()
+    else:
+        left_content_col, right_timeline_col = st.columns([2.2, 1.1], gap="large")
+        with left_content_col:
+            render_dynamic_sections()
+            render_investment_snapshot()
+        with right_timeline_col:
+            render_research_journey_panel()
 
     if st.session_state.is_running and st.session_state.pdf_in_progress:
         st.info(
@@ -1024,6 +1280,9 @@ def main():
     if st.session_state.is_running:
         time.sleep(1)
         st.rerun()
+
+    if st.session_state.is_report_viewer_open:
+        st.info("Report viewer is open in immersive mode. Click `Exit Viewer` to return to the studio layout.")
 
 if __name__ == "__main__":
     main()

@@ -15,12 +15,18 @@ from pydantic import BaseModel, Field
 
 from prompts import (
     GENERATE_REPORT_STRUCTURE_PROMPT,
+    GENERATE_CREDIT_REPORT_STRUCTURE_PROMPT,
     GENERATE_WEB_QUERIES_PROMPT,
+    GENERATE_CREDIT_WEB_QUERIES_PROMPT,
     GENERATE_FINANCIAL_QUERIES_PROMPT,
     GENERATE_OPENING_SECTION_PROMPT,
+    GENERATE_CREDIT_OPENING_SECTION_PROMPT,
     GENERATE_EXECUTIVE_SUMMARY_PROMPT,
+    GENERATE_CREDIT_EXECUTIVE_SUMMARY_PROMPT,
     CONTENT_GENERATION_SYSTEM_PROMPT_v2,
     CONTENT_GENERATION_USER_PROMPT_v3,
+    CONTENT_GENERATION_SYSTEM_PROMPT_CREDIT,
+    CONTENT_GENERATION_USER_PROMPT_CREDIT,
 )
 from llama_index.core.chat_engine.types import AgentChatResponse
 from tools.web_search import WebSearchTool, parallel_search
@@ -178,7 +184,7 @@ class VisualDeckSpec(BaseModel):
     )
 
 
-class AgentInvest:
+class AnalystIQ:
     def __init__(self, verbose_agent: bool = False):
         self.current_date = datetime.now().strftime("%Y-%m-%d")
         max_tokens_env = os.getenv("OPENROUTER_MAX_TOKENS", "3500")
@@ -211,6 +217,17 @@ class AgentInvest:
         self.cache_manager = RedisCacheManager(ttl_seconds=3600)
         self.chart_validator = ChartValidatorAgent()
         self.chart_corrector = ChartCorrectorAgent()
+        self.product_name = os.getenv("REPORT_PRODUCT_NAME", "AnalystIQ")
+
+    def _normalize_report_type(self, report_type: Optional[str]) -> str:
+        normalized = (report_type or "investment").strip().lower()
+        return "credit" if normalized in {"credit", "credit_analysis", "credit-analysis"} else "investment"
+
+    def _report_mode_label(self, report_type: str) -> str:
+        return "Credit Analysis Report" if report_type == "credit" else "Investment Report"
+
+    def _report_file_slug(self, report_type: str) -> str:
+        return "CreditAnalysis" if report_type == "credit" else "AnalystIQ"
 
     def _build_instruction_block(self, custom_instruction: Optional[str]) -> str:
         """Return a reusable prompt block for optional custom instructions."""
@@ -330,8 +347,19 @@ Rules:
             return None
 
     @retry(wait=wait_exponential(multiplier=1, min=2, max=60), stop=stop_after_attempt(3))
-    async def generate_report_structure(self, company_name: str, custom_instruction: Optional[str] = None) -> List[str]:
-        prompt = GENERATE_REPORT_STRUCTURE_PROMPT.format(
+    async def generate_report_structure(
+        self,
+        company_name: str,
+        custom_instruction: Optional[str] = None,
+        report_type: str = "investment",
+    ) -> List[str]:
+        report_type = self._normalize_report_type(report_type)
+        structure_prompt = (
+            GENERATE_CREDIT_REPORT_STRUCTURE_PROMPT
+            if report_type == "credit"
+            else GENERATE_REPORT_STRUCTURE_PROMPT
+        )
+        prompt = structure_prompt.format(
             company_name=company_name, current_date=self.current_date
         )
         prompt += self._build_instruction_block(custom_instruction)
@@ -339,8 +367,19 @@ Rules:
         return self._parse_llm_python_output(response.text)
 
     @retry(wait=wait_exponential(multiplier=1, min=2, max=60), stop=stop_after_attempt(3))
-    async def generate_web_queries(self, company_name: str, report_structure: List[str]) -> List[str]:
-        prompt = GENERATE_WEB_QUERIES_PROMPT.format(
+    async def generate_web_queries(
+        self,
+        company_name: str,
+        report_structure: List[str],
+        report_type: str = "investment",
+    ) -> List[str]:
+        report_type = self._normalize_report_type(report_type)
+        web_prompt = (
+            GENERATE_CREDIT_WEB_QUERIES_PROMPT
+            if report_type == "credit"
+            else GENERATE_WEB_QUERIES_PROMPT
+        )
+        prompt = web_prompt.format(
             company_name=company_name,
             report_structure=str(report_structure),
             current_date=self.current_date,
@@ -436,6 +475,7 @@ Rules:
         company_name: str,
         context: str,
         previous_content: str = "",
+        report_type: str = "investment",
         custom_instruction: Optional[str] = None,
         evaluator_feedback: Optional[str] = None,
         penalized_previous_draft: Optional[str] = None,
@@ -446,8 +486,19 @@ Rules:
         This version considers previous sections for better flow and chart type diversity.
         """
         
-        system_prompt = CONTENT_GENERATION_SYSTEM_PROMPT_v2.format(current_date=self.current_date)
-        user_prompt = CONTENT_GENERATION_USER_PROMPT_v3.format(
+        report_type = self._normalize_report_type(report_type)
+        system_template = (
+            CONTENT_GENERATION_SYSTEM_PROMPT_CREDIT
+            if report_type == "credit"
+            else CONTENT_GENERATION_SYSTEM_PROMPT_v2
+        )
+        user_template = (
+            CONTENT_GENERATION_USER_PROMPT_CREDIT
+            if report_type == "credit"
+            else CONTENT_GENERATION_USER_PROMPT_v3
+        )
+        system_prompt = system_template.format(current_date=self.current_date)
+        user_prompt = user_template.format(
             section_title=section_title,
             company_name=company_name,
             context=context,
@@ -598,6 +649,31 @@ Rules:
                         fix_instruction="Provide complete chart wrappers with both <canvas> and <script> tags.",
                     )
                 )
+            # Add dimension checks
+            div_width_match = re.search(r'width:\s*(\d+)px', body)
+            div_height_match = re.search(r'height:\s*(\d+)px', body)
+            canvas_width_match = re.search(r'canvas.+?width=\"(\d+)\"', body)
+            canvas_height_match = re.search(r'canvas.+?height=\"(\d+)\"', body)
+
+            if not (div_width_match and div_width_match.group(1) == "760" and
+                    div_height_match and div_height_match.group(1) == "560"):
+                violations.append(
+                    SectionViolation(
+                        violation_type="INCORRECT_CONTAINER_DIMENSIONS",
+                        evidence=f"Container div dimensions found: width={div_width_match.group(1) if div_width_match else 'N/A'}, height={div_height_match.group(1) if div_height_match else 'N/A'}",
+                        fix_instruction="Ensure chart container div has `width:760px; height:560px;`."
+                    )
+                )
+            if not (canvas_width_match and canvas_width_match.group(1) == "720" and
+                    canvas_height_match and canvas_height_match.group(1) == "520"):
+                violations.append(
+                    SectionViolation(
+                        violation_type="INCORRECT_CANVAS_DIMENSIONS",
+                        evidence=f"Canvas dimensions found: width={canvas_width_match.group(1) if canvas_width_match else 'N/A'}, height={canvas_height_match.group(1) if canvas_height_match else 'N/A'}",
+                        fix_instruction="Ensure canvas element has `width=\"720\" height=\"520\"` attributes."
+                    )
+                )
+
             if re.search(r"labels\s*:\s*\[\s*\]", body) or re.search(r"datasets\s*:\s*\[\s*\]", body):
                 violations.append(
                     SectionViolation(
@@ -727,11 +803,37 @@ Section content:
         )
 
     def _extract_cited_numbers(self, report_content: str) -> List[int]:
-        import re
-        # Regex to find numbers inside square brackets
-        pattern = r'\[(\d+)\]'
-        # Find all matches, convert them to int, and return a sorted list of unique numbers
-        return sorted(list(set(map(int, re.findall(pattern, report_content)))))
+        """
+        Extract citation numbers from report body.
+
+        Handles:
+        - Single citations: [1]
+        - Grouped citations: [1,2], [1, 2, 3]
+
+        Avoids false positives from chart/javascript content by removing fenced code and script
+        blocks before parsing.
+        """
+        if not report_content:
+            return []
+
+        # Remove fenced code blocks first (charts are usually embedded here).
+        cleaned = re.sub(r"```[\s\S]*?```", " ", report_content)
+        # Extra safety for any inline script/style blocks outside fences.
+        cleaned = re.sub(r"<script[\s\S]*?</script>", " ", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"<style[\s\S]*?</style>", " ", cleaned, flags=re.IGNORECASE)
+
+        cited_numbers: set[int] = set()
+        for match in re.finditer(r"\[([^\[\]]+)\]", cleaned):
+            bracket_content = match.group(1).strip()
+            # Accept only comma-separated integer lists as citations.
+            if not re.fullmatch(r"\d+(?:\s*,\s*\d+)*", bracket_content):
+                continue
+            for token in bracket_content.split(","):
+                token = token.strip()
+                if token.isdigit():
+                    cited_numbers.add(int(token))
+
+        return sorted(cited_numbers)
 
     def _generate_references_section(self, cited_numbers: List[int]) -> str:
         """
@@ -801,19 +903,71 @@ Section content:
         
         return toc_content
 
+    def _has_unexpected_language_drift(self, content: str) -> bool:
+        """Detect non-English script drift in sections that must be English."""
+        if not content:
+            return False
+
+        latin_letters = len(re.findall(r"[A-Za-z]", content))
+        cjk_chars = len(re.findall(r"[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]", content))
+        # Keep threshold permissive for short outputs but strict enough to catch Chinese-heavy drafts.
+        return cjk_chars >= 20 and (latin_letters == 0 or cjk_chars > latin_letters * 0.45)
+
+    async def _generate_english_guarded_text(
+        self,
+        base_prompt: str,
+        content_label: str,
+        max_attempts: int = 3,
+    ) -> str:
+        """
+        Generate text and retry with stricter instruction if script/language drift is detected.
+        """
+        latest_text = ""
+        for attempt in range(1, max_attempts + 1):
+            prompt = base_prompt
+            if attempt > 1:
+                prompt += (
+                    "\n\nCRITICAL OUTPUT CONSTRAINT:\n"
+                    "- Return professional English only.\n"
+                    "- Do NOT use Chinese or other non-English scripts.\n"
+                    "- Preserve all numeric facts and citation markers exactly.\n"
+                    "- Return only the requested section content.\n"
+                )
+            response = await self.llm.acomplete(prompt)
+            latest_text = response.text.strip()
+            if not self._has_unexpected_language_drift(latest_text):
+                return latest_text
+            print(
+                f"WARNING: {content_label} language drift detected "
+                f"(attempt {attempt}/{max_attempts}); retrying in English-only mode."
+            )
+
+        print(
+            f"WARNING: {content_label} still shows language drift after {max_attempts} attempts; "
+            "returning latest draft."
+        )
+        return latest_text
+
     @retry(wait=wait_exponential(multiplier=1, min=2, max=60), stop=stop_after_attempt(3))
     async def generate_opening_section(
         self,
         company_name: str,
         ticker: str,
         context: str,
+        report_type: str = "investment",
         custom_instruction: Optional[str] = None,
     ) -> str:
         """
         Generate the opening section with company info, thesis, and recommended steps using LLM.
         This creates a data-driven opening based on the retrieved context and serves as the title page.
         """
-        prompt = GENERATE_OPENING_SECTION_PROMPT.format(
+        report_type = self._normalize_report_type(report_type)
+        opening_prompt = (
+            GENERATE_CREDIT_OPENING_SECTION_PROMPT
+            if report_type == "credit"
+            else GENERATE_OPENING_SECTION_PROMPT
+        )
+        prompt = opening_prompt.format(
             company_name=company_name,
             ticker=ticker,
             current_date=self.current_date
@@ -825,11 +979,12 @@ Section content:
             f"{self._build_instruction_block(custom_instruction)}\n\n"
             "ONLY output the content for the opening section, no other text or explanation. Generate the opening section now:"
         )
-        
-        response = await self.llm.acomplete(full_prompt)
-        
-        # Add the company/date info after the title
-        opening_content = response.text.strip()
+
+        opening_content = await self._generate_english_guarded_text(
+            base_prompt=full_prompt,
+            content_label="Opening section",
+            max_attempts=3,
+        )
         
         # Find the first line (title) and add the company info after it with proper styling
         lines = opening_content.split('\n')
@@ -844,7 +999,7 @@ Section content:
             centered_title = f'<div class="title-page-title">\n{clean_title}\n</div>'
             
             # Use CSS class for proper title page formatting
-            company_info = f'\n\n<div class="title-page-info">\n<strong>Prepared by AgentInvest</strong><br>\n<strong>Date: {self.current_date}</strong>\n</div>\n'
+            company_info = f'\n\n<div class="title-page-info">\n<strong>Prepared by {self.product_name}</strong><br>\n<strong>Date: {self.current_date}</strong>\n</div>\n'
             
             # Add page break after opening section
             page_break = "\n\n<div style='page-break-after: always;'></div>\n\n---\n"
@@ -855,7 +1010,7 @@ Section content:
             # Remove markdown header syntax if present
             clean_opening = opening_content.replace('## ', '').replace('# ', '')
             centered_opening = f'<div class="title-page-title">\n{clean_opening}\n</div>'
-            company_info = f'\n\n<div class="title-page-info">\n<strong>Prepared by AgentInvest</strong><br>\n<strong>Date: {self.current_date}</strong>\n</div>\n'
+            company_info = f'\n\n<div class="title-page-info">\n<strong>Prepared by {self.product_name}</strong><br>\n<strong>Date: {self.current_date}</strong>\n</div>\n'
             page_break = "\n\n<div style='page-break-after: always;'></div>\n\n---\n"
             return centered_opening + company_info + page_break
 
@@ -865,13 +1020,20 @@ Section content:
         company_name: str,
         ticker: str,
         raw_report: str,
+        report_type: str = "investment",
         custom_instruction: Optional[str] = None,
     ) -> str:
         """
         Generate a comprehensive executive summary based on the complete report content.
         This will be placed on a separate page after the opening section.
         """
-        prompt = GENERATE_EXECUTIVE_SUMMARY_PROMPT.format(
+        report_type = self._normalize_report_type(report_type)
+        summary_prompt = (
+            GENERATE_CREDIT_EXECUTIVE_SUMMARY_PROMPT
+            if report_type == "credit"
+            else GENERATE_EXECUTIVE_SUMMARY_PROMPT
+        )
+        prompt = summary_prompt.format(
             company_name=company_name,
             ticker=ticker,
             current_date=self.current_date
@@ -883,11 +1045,18 @@ Section content:
             f"{self._build_instruction_block(custom_instruction)}\n\n"
             "ONLY output the content for the executive summary, no other text or explanation. Generate the executive summary now:"
         )
-        
-        response = await self.llm.acomplete(full_prompt)
-        
+
+        executive_summary_content = await self._generate_english_guarded_text(
+            base_prompt=full_prompt,
+            content_label="Executive summary",
+            max_attempts=3,
+        )
+
         # Add page break after executive summary with proper HTML anchor for CSS targeting
-        executive_summary = f'<a id="executive-summary"></a>\n\n## Executive Summary\n\n{response.text.strip()}\n\n<div style="page-break-after: always;"></div>\n\n---\n'
+        executive_summary = (
+            '<a id="executive-summary"></a>\n\n## Executive Summary\n\n'
+            f'{executive_summary_content}\n\n<div style="page-break-after: always;"></div>\n\n---\n'
+        )
         
         return executive_summary
 
@@ -1050,19 +1219,19 @@ Report content:
         }
         deck_title = self._deck_plain_text(
             str(value.get("deck_title") or f"{company_name} Investment Committee Deck"),
-            max_chars=90,
+            max_chars=60,
         )
         subtitle = self._deck_plain_text(
-            str(value.get("subtitle") or f"{ticker} | Generated by AgentInvest"),
-            max_chars=100,
+            str(value.get("subtitle") or f"{ticker} | Generated by {self.product_name}"),
+            max_chars=75,
         )
         thesis = self._deck_plain_text(
             str(value.get("investment_thesis") or executive_summary or ""),
-            max_chars=220,
+            max_chars=150,
         )
         recommendation = self._deck_plain_text(
             str(value.get("recommendation") or "Validate thesis, risks, and sizing before committee action."),
-            max_chars=140,
+            max_chars=100,
         )
 
         raw_slides = value.get("slides") if isinstance(value.get("slides"), list) else []
@@ -1076,20 +1245,21 @@ Report content:
 
             headline = self._deck_plain_text(
                 str(item.get("headline") or item.get("title") or ""),
-                max_chars=86,
+                max_chars=50,
             )
             if not headline:
                 continue
 
             bullets_value = item.get("bullets") or item.get("sections") or []
             bullets: List[str] = []
+            # Ensure each bullet is concise
             if isinstance(bullets_value, list):
                 for bullet in bullets_value[:5]:
                     if isinstance(bullet, dict):
                         text = bullet.get("text") or bullet.get("body") or bullet.get("title") or ""
                     else:
                         text = str(bullet)
-                    clean = self._deck_plain_text(str(text), max_chars=115)
+                    clean = self._deck_plain_text(str(text), max_chars=70)
                     if clean:
                         bullets.append(clean)
 
@@ -1109,7 +1279,7 @@ Report content:
                         max_chars=36,
                     ),
                     "headline": headline,
-                    "takeaway": self._deck_plain_text(str(item.get("takeaway", "")), max_chars=180),
+                    "takeaway": self._deck_plain_text(str(item.get("takeaway", "")), max_chars=90),
                     "bullets": bullets[:5],
                     "metrics": self._normalize_metric_cards(item.get("metrics")),
                     "chart_ref": chart_ref,
@@ -1156,8 +1326,8 @@ Report content:
     ) -> Dict[str, Any]:
         """Create a usable visual deck spec without relying on model output."""
         sections = self._extract_report_sections_for_deck(report_markdown)
-        clean_points = [self._deck_plain_text(point, max_chars=115) for point in (key_points or []) if point]
-        thesis = self._deck_plain_text(executive_summary or (sections[0]["body"] if sections else ""), max_chars=220)
+        clean_points = [self._deck_plain_text(point, max_chars=70) for point in (key_points or []) if point]
+        thesis = self._deck_plain_text(executive_summary or (sections[0]["body"] if sections else ""), max_chars=150)
         slides: List[Dict[str, Any]] = [
             {
                 "layout_type": "thesis",
@@ -1174,12 +1344,13 @@ Report content:
 
         for idx, section in enumerate(sections[:5]):
             sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", section["body"]) if s.strip()]
-            bullets = [self._deck_plain_text(sentence, max_chars=110) for sentence in sentences[:4]]
+            # Enforce conciseness for bullets in fallback
+            bullets = [self._deck_plain_text(sentence, max_chars=70) for sentence in sentences[:4]]
             slides.append(
                 {
                     "layout_type": "chart_focus" if idx % 2 == 0 else "two_column",
                     "section_label": section["title"][:36],
-                    "headline": section["title"][:86],
+                    "headline": section["title"][:50],
                     "takeaway": bullets[0] if bullets else "",
                     "bullets": bullets[1:5] if len(bullets) > 1 else bullets,
                     "metrics": [],
@@ -1196,9 +1367,9 @@ Report content:
                 "headline": "Committee actions and monitoring plan",
                 "takeaway": "Use the report to validate valuation, catalysts, downside cases, and position sizing.",
                 "bullets": [
-                    "Confirm investment thesis against internal model assumptions.",
-                    "Pressure-test downside risk, liquidity, and key catalysts.",
-                    "Define buy, hold, trim, or watchlist decision criteria.",
+            "Confirm thesis with internal models.",
+            "Pressure-test downside risks and catalysts.",
+            "Define clear investment decision criteria.",
                 ],
                 "metrics": [],
                 "chart_ref": None,
@@ -1209,7 +1380,7 @@ Report content:
 
         return {
             "deck_title": f"{company_name} Investment Committee Deck",
-            "subtitle": f"{ticker} | Generated by AgentInvest",
+            "subtitle": f"{ticker} | Generated by {self.product_name}",
             "company_name": company_name,
             "ticker": ticker,
             "audience": "Investment committee",
@@ -1313,10 +1484,14 @@ Report excerpt:
     async def run(
         self,
         ticker: str,
+        report_type: str = "investment",
         progress_callback: Optional[ProgressCallback] = None,
         custom_instruction: Optional[str] = None,
         stop_event: Optional[Any] = None,
     ):
+        report_type = self._normalize_report_type(report_type)
+        report_label = self._report_mode_label(report_type)
+        report_slug = self._report_file_slug(report_type)
         
         def update_progress(message: str, data: Optional[Any] = None):
             payload = {"message": message, "data": data}
@@ -1335,7 +1510,7 @@ Report excerpt:
                 raise asyncio.CancelledError("Report generation cancelled by user.")
 
         ensure_not_cancelled()
-        update_progress(f"🚀 Starting analysis for {ticker}")
+        update_progress(f"🚀 Starting analysis for {ticker} ({report_label})")
         rewritten_instruction = ""
         if custom_instruction and custom_instruction.strip():
             ensure_not_cancelled()
@@ -1354,7 +1529,7 @@ Report excerpt:
                 )
 
         # --- Check Cache ---
-        cached_data = self.cache_manager.get_cached_data(ticker)
+        cached_data = self.cache_manager.get_cached_data(ticker, report_type=report_type)
         
         if cached_data:
             ensure_not_cancelled()
@@ -1376,7 +1551,11 @@ Report excerpt:
             if rewritten_instruction:
                 ensure_not_cancelled()
                 update_progress("🧭 Regenerating report structure using validated custom instruction...")
-                regenerated_structure = await self.generate_report_structure(company_name, rewritten_instruction)
+                regenerated_structure = await self.generate_report_structure(
+                    company_name,
+                    rewritten_instruction,
+                    report_type=report_type,
+                )
                 if regenerated_structure:
                     report_structure = regenerated_structure
                     update_progress("✅ Custom report structure generated", report_structure)
@@ -1391,7 +1570,11 @@ Report excerpt:
             # 2. Generate report structure
             ensure_not_cancelled()
             update_progress("🏗️ Generating report structure...")
-            report_structure = await self.generate_report_structure(company_name, rewritten_instruction)
+            report_structure = await self.generate_report_structure(
+                company_name,
+                rewritten_instruction,
+                report_type=report_type,
+            )
             if not report_structure:
                 update_progress("❌ Failed to generate report structure. Aborting.")
                 return
@@ -1400,7 +1583,9 @@ Report excerpt:
             # 3. & 4. Generate sub-queries in parallel
             ensure_not_cancelled()
             update_progress("🔍💹 Generating research queries for web and financial data...")
-            web_queries_task = asyncio.create_task(self.generate_web_queries(company_name, report_structure))
+            web_queries_task = asyncio.create_task(
+                self.generate_web_queries(company_name, report_structure, report_type=report_type)
+            )
             financial_queries_task = asyncio.create_task(self.generate_financial_queries(company_name, ticker, report_structure))
             web_queries, financial_queries = await asyncio.gather(web_queries_task, financial_queries_task)
 
@@ -1425,7 +1610,8 @@ Report excerpt:
             # --- Store in Cache ---
             self.cache_manager.set_cached_data(
                 ticker, company_name, report_structure, context,
-                web_results, financial_results, web_queries, financial_queries
+                web_results, financial_results, web_queries, financial_queries,
+                report_type=report_type,
             )
 
         # 8. Generate content for each section
@@ -1450,7 +1636,8 @@ Report excerpt:
                     company_name,
                     context,
                     previous_sections_content,
-                    rewritten_instruction,
+                    report_type=report_type,
+                    custom_instruction=rewritten_instruction,
                     evaluator_feedback=evaluator_feedback,
                     penalized_previous_draft=penalized_previous_draft,
                     regeneration_mode=(attempt > 1),
@@ -1534,12 +1721,13 @@ Report excerpt:
 
         # 10. Generate opening section (serves as title page)
         ensure_not_cancelled()
-        update_progress("📋 Generating opening section as title page...")
+        update_progress(f"📋 Generating {report_label} opening section as title page...")
         opening_section = await self.generate_opening_section(
             company_name,
             ticker,
             context,
-            rewritten_instruction,
+            report_type=report_type,
+            custom_instruction=rewritten_instruction,
         )
         opening_section_preview = self.extract_opening_section_preview(opening_section)
         if opening_section_preview:
@@ -1552,7 +1740,8 @@ Report excerpt:
             company_name,
             ticker,
             raw_report,
-            rewritten_instruction,
+            report_type=report_type,
+            custom_instruction=rewritten_instruction,
         )
         executive_summary_preview = self.extract_executive_summary_preview(executive_summary)
         if executive_summary_preview:
@@ -1593,7 +1782,7 @@ Report excerpt:
         os.makedirs(reports_dir, exist_ok=True)
         
         # Save to markdown file in the mounted volume (ensure overwrite)
-        output_md_filename = os.path.join(reports_dir, f"{ticker}_AgentInvest_Report.md")
+        output_md_filename = os.path.join(reports_dir, f"{ticker}_{report_slug}_Report.md")
         
         # Explicitly remove existing markdown file if it exists
         if os.path.exists(output_md_filename):
@@ -1608,7 +1797,7 @@ Report excerpt:
         try:
             with open(output_md_filename, "w", encoding='utf-8') as f:
                 f.write(final_report)
-            update_progress(f"✅ Markdown report saved: {output_md_filename}")
+            update_progress("✅ Markdown report saved", output_md_filename)
         except IOError as e:
             update_progress(f"❌ Failed to save markdown report: {e}")
             return final_report
@@ -1616,7 +1805,7 @@ Report excerpt:
         # Convert to PDF in the mounted volume (ensure overwrite)
         ensure_not_cancelled()
         update_progress("📄 Converting report to PDF...")
-        output_pdf_filename = os.path.join(reports_dir, f"{ticker}_AgentInvest_Report.pdf")
+        output_pdf_filename = os.path.join(reports_dir, f"{ticker}_{report_slug}_Report.pdf")
 
         # Explicitly remove existing PDF file if it exists
         if os.path.exists(output_pdf_filename):
@@ -1634,6 +1823,8 @@ Report excerpt:
             final_report, 
             output_pdf_filename, 
             company_name=company_name,
+            report_title=report_label,
+            product_name=self.product_name,
             chartjs_src=chartjs_src,
             logo_path=logo_path,
             website_url=website_url
@@ -1649,7 +1840,6 @@ Report excerpt:
             update_progress("❌ Failed to generate PDF report.")
         
         return final_report
-
     async def run_v3(
         self,
         ticker: str,
@@ -1770,7 +1960,7 @@ Report excerpt:
                     company_name,
                     context,
                     previous_sections_content,
-                    rewritten_instruction,
+                    custom_instruction=rewritten_instruction,
                     evaluator_feedback=evaluator_feedback,
                     penalized_previous_draft=penalized_previous_draft,
                     regeneration_mode=(attempt > 1),
@@ -1842,7 +2032,7 @@ Report excerpt:
             company_name,
             ticker,
             context,
-            rewritten_instruction,
+            custom_instruction=rewritten_instruction,
         )
         opening_section_preview = self.extract_opening_section_preview(opening_section)
         if opening_section_preview:
@@ -1854,7 +2044,7 @@ Report excerpt:
             company_name,
             ticker,
             raw_report,
-            rewritten_instruction,
+            custom_instruction=rewritten_instruction,
         )
         executive_summary_preview = self.extract_executive_summary_preview(executive_summary)
         if executive_summary_preview:
@@ -1898,7 +2088,7 @@ Report excerpt:
             pass
         
         # Save to markdown file in the mounted volume (ensure overwrite)
-        output_md_filename = os.path.join(reports_dir, f"{ticker}_AgentInvest_Report_v3.md")
+        output_md_filename = os.path.join(reports_dir, f"{ticker}_AnalystIQ_Report_v3.md")
         
         # Explicitly remove existing markdown file if it exists
         if os.path.exists(output_md_filename):
@@ -1912,14 +2102,14 @@ Report excerpt:
         try:
             with open(output_md_filename, "w", encoding='utf-8') as f:
                 f.write(final_report)
-            update_progress(f"✅ Markdown report saved: {output_md_filename}")
+            update_progress("✅ Markdown report saved", output_md_filename)
         except IOError as e:
             update_progress(f"❌ Failed to save markdown report: {e}")
             return final_report
 
         # Convert to PDF in the mounted volume (ensure overwrite)
         update_progress("📄 Converting enhanced report to PDF...")
-        output_pdf_filename = os.path.join(reports_dir, f"{ticker}_AgentInvest_Report_v3.pdf")
+        output_pdf_filename = os.path.join(reports_dir, f"{ticker}_AnalystIQ_Report_v3.pdf")
         
         # Explicitly remove existing PDF file if it exists
         if os.path.exists(output_pdf_filename):
@@ -1937,6 +2127,8 @@ Report excerpt:
             final_report, 
             output_pdf_filename, 
             company_name=company_name,
+            report_title="Investment Report",
+            product_name=self.product_name,
             chartjs_src=chartjs_src,
             logo_path=logo_path,
             website_url=website_url
@@ -1952,3 +2144,7 @@ Report excerpt:
             update_progress("❌ Failed to generate enhanced PDF report.")
         
         return final_report
+
+
+# Backward-compatible alias for older imports/usages.
+AgentInvest = AnalystIQ
