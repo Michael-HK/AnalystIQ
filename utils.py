@@ -34,9 +34,14 @@ def run_async_in_thread(coro):
         future = executor.submit(run_in_thread)
         return future.result()
 
-footer_html = """
+def create_footer_template(
+    website_url: str = "https://personaly.ai/",
+    product_name: str = "AnalystIQ",
+) -> str:
+    """Create footer template with dynamic product branding."""
+    return f"""
 <style>
-  .footer {
+  .footer {{
     font-size: 9px;
     color: #666;
     width: 100%;
@@ -44,52 +49,55 @@ footer_html = """
     display: flex;
     justify-content: space-between;
     align-items: center;
-  }
-  .footer-left {
+  }}
+  .footer-left {{
     display: flex;
     align-items: center;
     gap: 8px;
-  }
-  .footer-center {
+  }}
+  .footer-center {{
     display: flex;
     align-items: center;
     justify-content: center;
     flex: 1;
-  }
-  .footer-right {
+  }}
+  .footer-right {{
     display: flex;
     align-items: center;
-  }
-  .footer-logo {
+  }}
+  .footer-logo {{
     height: 12px;
     width: auto;
     max-width: 60px;
-  }
-  .footer-branding {
+  }}
+  .footer-branding {{
     font-size: 9px;
     color: #888;
     text-decoration: none;
-  }
-  .footer-branding:hover {
+  }}
+  .footer-branding:hover {{
     color: #0066cc;
-  }
-  /* Avoid unexpected page scaling artifacts */
-  .footer * { font-family: Arial, sans-serif; }
+  }}
+  .footer * {{ font-family: Arial, sans-serif; }}
 </style>
 <div class="footer">
   <div class="footer-left">
-    <!-- Empty left section for balance -->
   </div>
   <div class="footer-center">
     <span><span class="pageNumber"></span> of <span class="totalPages"></span></span>
   </div>
   <div class="footer-right">
-    <a href="https://personaly.ai" class="footer-branding" target="_blank">Powered by AgentInvest</a>
+    <a href="{website_url}" class="footer-branding" target="_blank">Powered by {product_name}</a>
   </div>
 </div>
 """
 
-def create_header_template(logo_path: Optional[str] = None, website_url: str = "https://personaly.ai/") -> str:
+def create_header_template(
+    logo_path: Optional[str] = None,
+    website_url: str = "https://personaly.ai/",
+    report_title: str = "Investment Report",
+    product_name: str = "AnalystIQ",
+) -> str:
     """
     Create a header template with optional logo and branding.
     
@@ -117,7 +125,7 @@ def create_header_template(logo_path: Optional[str] = None, website_url: str = "
                 </a>
               </div>
               <div style="color: #888; font-size: 9px;">
-                Investment Report
+                {report_title}
               </div>
             </div>
             """
@@ -128,10 +136,10 @@ def create_header_template(logo_path: Optional[str] = None, website_url: str = "
     return f"""
     <div style="font-size:8px; width:100%; display: flex; justify-content: space-between; align-items: center; padding: 0 12mm;">
       <div style="color: #888; font-size: 9px;">
-        <a href="{website_url}" target="_blank" style="color: #888; text-decoration: none;">AgentInvest</a>
+        <a href="{website_url}" target="_blank" style="color: #888; text-decoration: none;">{product_name}</a>
       </div>
       <div style="color: #888; font-size: 9px;">
-        Investment Report
+        {report_title}
       </div>
     </div>
     """
@@ -155,7 +163,11 @@ logger = logging.getLogger(__name__)
 
 #============= uisng playwright to convert html to pdf =============
 # 1. create a complete HTML document with CSS styling for PDF generation
-def create_pdf_html_document(body_html: str, company_name: str) -> str:
+def create_pdf_html_document(
+    body_html: str,
+    company_name: str,
+    report_title: str = "Investment Report",
+) -> str:
     """
     Create a complete HTML document with CSS styling for PDF generation.
     """
@@ -163,7 +175,7 @@ def create_pdf_html_document(body_html: str, company_name: str) -> str:
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Investment Report - {company_name}</title>
+    <title>{report_title} - {company_name}</title>
     <style>
         /* Reset default margins and padding */
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
@@ -543,6 +555,8 @@ async def convert_report_to_pdf(
     output_filename: str,
     *,
     company_name: str,
+    report_title: str = "Investment Report",
+    product_name: str = "AnalystIQ",
     chartjs_src: Optional[str] = None,
     logo_path: Optional[str] = None,
     website_url: str = "https://personaly.ai"
@@ -662,10 +676,16 @@ async def convert_report_to_pdf(
         )
 
         # 3. Create the complete HTML document for PDF generation
-        html_doc = create_pdf_html_document(body_html, company_name)
+        html_doc = create_pdf_html_document(body_html, company_name, report_title=report_title)
 
         # 4. Generate PDF using Playwright
-        header_template = create_header_template(logo_path, website_url)
+        header_template = create_header_template(
+            logo_path,
+            website_url,
+            report_title=report_title,
+            product_name=product_name,
+        )
+        footer_html = create_footer_template(website_url=website_url, product_name=product_name)
         await html_to_pdf_from_string_async(
             html_doc,
             output_filename,
@@ -703,6 +723,8 @@ async def convert_markdown_file_to_pdf(
     output_filename: str,
     *,
     company_name: str,
+    report_title: str = "Investment Report",
+    product_name: str = "AnalystIQ",
     chartjs_src: Optional[str] = None,
     logo_path: Optional[str] = None,
     website_url: str = "https://personaly.ai"
@@ -716,6 +738,8 @@ async def convert_markdown_file_to_pdf(
         md,
         output_filename,
         company_name=company_name,
+        report_title=report_title,
+        product_name=product_name,
         chartjs_src=chartjs_src,
         logo_path=logo_path,
         website_url=website_url
