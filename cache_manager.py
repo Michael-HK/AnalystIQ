@@ -34,7 +34,16 @@ class RedisCacheManager:
             self.client = None
         self.ttl = ttl_seconds
 
-    def get_cached_data(self, ticker: str) -> Optional[Dict[str, Any]]:
+    @staticmethod
+    def _normalize_report_type(report_type: Optional[str]) -> str:
+        normalized = (report_type or "investment").strip().lower()
+        return "credit" if normalized in {"credit", "credit_analysis", "credit-analysis"} else "investment"
+
+    def _cache_key(self, ticker: str, report_type: Optional[str] = None) -> str:
+        normalized_type = self._normalize_report_type(report_type)
+        return f"agentinvest:report:{normalized_type}:{ticker}"
+
+    def get_cached_data(self, ticker: str, report_type: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
         Retrieves cached report structure and context for a given ticker.
 
@@ -47,19 +56,25 @@ class RedisCacheManager:
         if not self.client:
             return None
         
-        cache_key = f"agentinvest:report:{ticker}"
+        normalized_type = self._normalize_report_type(report_type)
+        cache_key = self._cache_key(ticker, normalized_type)
         cached_value = self.client.get(cache_key)
         
+        # Backward compatibility for legacy investment-only cache keys.
+        if not cached_value and normalized_type == "investment":
+            cached_value = self.client.get(f"agentinvest:report:{ticker}")
+
         if cached_value:
-            logger.info(f"Cache hit for ticker: {ticker}")
+            logger.info(f"Cache hit for ticker: {ticker} report_type: {normalized_type}")
             return json.loads(cached_value)
         
-        logger.info(f"Cache miss for ticker: {ticker}")
+        logger.info(f"Cache miss for ticker: {ticker} report_type: {normalized_type}")
         return None
 
     def set_cached_data(self, ticker: str, company_name: str, structure: List[str], context: str, 
                        web_results: Optional[List[Any]] = None, financial_results: Optional[List[Any]] = None,
-                       web_queries: Optional[List[str]] = None, financial_queries: Optional[List[Dict[str, str]]] = None) -> None:
+                       web_queries: Optional[List[str]] = None, financial_queries: Optional[List[Dict[str, str]]] = None,
+                       report_type: Optional[str] = None) -> None:
         """
         Caches the report structure, context, and raw results for a given ticker.
 
@@ -76,8 +91,10 @@ class RedisCacheManager:
         if not self.client:
             return
 
-        cache_key = f"agentinvest:report:{ticker}"
+        normalized_type = self._normalize_report_type(report_type)
+        cache_key = self._cache_key(ticker, normalized_type)
         data_to_cache = {
+            "report_type": normalized_type,
             "company_name": company_name,
             "structure": structure,
             "context": context,
@@ -88,7 +105,7 @@ class RedisCacheManager:
         }
         
         self.client.set(cache_key, json.dumps(data_to_cache, default=str), ex=self.ttl)
-        logger.info(f"Cached comprehensive data for ticker: {ticker}")
+        logger.info(f"Cached comprehensive data for ticker: {ticker} report_type: {normalized_type}")
 
     def clear_all_cached_reports(self) -> int:
         """
