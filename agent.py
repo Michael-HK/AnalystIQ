@@ -184,14 +184,27 @@ class VisualDeckSpec(BaseModel):
     )
 
 
+class ReportStructureOutput(BaseModel):
+    """Structured output contract for report section planning."""
+
+    sections: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Ordered report sections for the final report body. "
+            "Each item should be a concise section title."
+        ),
+    )
+
+
 class AnalystIQ:
     def __init__(self, verbose_agent: bool = False):
         self.current_date = datetime.now().strftime("%Y-%m-%d")
-        max_tokens_env = os.getenv("OPENROUTER_MAX_TOKENS", "3500")
+        # Keep a conservative default so runs still work on low-credit accounts.
+        max_tokens_env = os.getenv("OPENROUTER_MAX_TOKENS", "1800")
         try:
             self.max_tokens = max(500, min(int(max_tokens_env), 8000))
         except ValueError:
-            self.max_tokens = 3500
+            self.max_tokens = 1800
 
 
         self.llm = OpenRouter(
@@ -363,8 +376,40 @@ Rules:
             company_name=company_name, current_date=self.current_date
         )
         prompt += self._build_instruction_block(custom_instruction)
-        response = await self.llm.acomplete(prompt)
-        return self._parse_llm_python_output(response.text)
+
+        def _clean_sections(items: Any) -> List[str]:
+            if not isinstance(items, list):
+                return []
+            cleaned: List[str] = []
+            for item in items:
+                text = str(item).strip()
+                if text:
+                    cleaned.append(text)
+            return cleaned
+
+        # Primary path: structured output, aligned with section evaluator pattern.
+        try:
+            structured_llm = self.llm.as_structured_llm(output_cls=ReportStructureOutput)
+            messages = [ChatMessage(role=MessageRole.USER, content=prompt)]
+            response = await structured_llm.achat(messages)
+            if hasattr(response, "raw") and isinstance(response.raw, ReportStructureOutput):
+                structured_sections = _clean_sections(response.raw.sections)
+                if structured_sections:
+                    return structured_sections
+            if hasattr(response, "message") and getattr(response.message, "content", None):
+                parsed_json = self._parse_llm_json_output(response.message.content)
+                if isinstance(parsed_json, dict):
+                    model = ReportStructureOutput.model_validate(parsed_json)
+                    structured_sections = _clean_sections(model.sections)
+                    if structured_sections:
+                        return structured_sections
+        except Exception:
+            # Fallback to legacy parser for compatibility.
+            pass
+
+        # Legacy fallback path if structured decode fails for any provider/model edge case.
+        legacy_response = await self.llm.acomplete(prompt)
+        return _clean_sections(self._parse_llm_python_output(legacy_response.text))
 
     @retry(wait=wait_exponential(multiplier=1, min=2, max=60), stop=stop_after_attempt(3))
     async def generate_web_queries(
@@ -1161,6 +1206,60 @@ Report content:
             cleaned = cleaned[: max_chars - 3].rstrip() + "..."
         return cleaned
 
+    def _truncate_words(self, text: str, max_words: int) -> str:
+        """Limit sentence length by words for slide readability."""
+        cleaned = self._deck_plain_text(text, max_chars=180)
+        if not cleaned:
+            return ""
+        words = cleaned.split()
+        if len(words) <= max_words:
+            return cleaned
+        return " ".join(words[:max_words]).rstrip(",;:") + "..."
+
+    def _extract_quant_signals_for_deck(
+        self,
+        report_markdown: str,
+        *,
+        max_items: int = 8,
+    ) -> List[Dict[str, str]]:
+        """Extract compact numeric fact cards from report text for dashboard slides."""
+        plain = self._deck_plain_text(report_markdown or "", max_chars=0)
+        sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", plain) if s.strip()]
+        cards: List[Dict[str, str]] = []
+        seen: set = set()
+        number_pattern = re.compile(
+            r"(\$?\d[\d,]*(?:\.\d+)?\s*(?:%|x|bps|bp|pts?|m|mn|million|bn|billion|k|trillion)?)",
+            flags=re.IGNORECASE,
+        )
+        delta_pattern = re.compile(
+            r"([+-]\d[\d,]*(?:\.\d+)?\s*(?:%|bps|bp|pts?|x)?)",
+            flags=re.IGNORECASE,
+        )
+        for sentence in sentences:
+            match = number_pattern.search(sentence)
+            if not match:
+                continue
+            value = self._deck_plain_text(match.group(1), max_chars=22)
+            if not value:
+                continue
+            prefix = sentence[: match.start()].strip(" ,:;-")
+            if prefix:
+                label = self._deck_plain_text(" ".join(prefix.split()[-5:]), max_chars=34)
+            else:
+                label = "Key metric"
+            if len(label) < 4:
+                label = "Key metric"
+            delta_match = delta_pattern.search(sentence)
+            delta = self._deck_plain_text(delta_match.group(1), max_chars=20) if delta_match else ""
+            key = (label.lower(), value.lower())
+            if key in seen:
+                continue
+            seen.add(key)
+            cards.append({"label": label, "value": value, "delta": delta})
+            if len(cards) >= max_items:
+                break
+        return cards
+
     def _extract_report_sections_for_deck(self, report_markdown: str) -> List[Dict[str, str]]:
         """Extract clean top-level report sections for deterministic deck fallback."""
         matches = list(re.finditer(r"^##\s+(.+)$", report_markdown or "", flags=re.MULTILINE))
@@ -1208,6 +1307,7 @@ Report content:
         if not isinstance(value, dict):
             value = {}
 
+        chart_count = len(re.findall(r"```html\n(.*?)\n```", report_markdown or "", flags=re.DOTALL))
         allowed_layouts = {
             "hero",
             "thesis",
@@ -1233,6 +1333,33 @@ Report content:
             str(value.get("recommendation") or "Validate thesis, risks, and sizing before committee action."),
             max_chars=100,
         )
+        quant_cards = self._extract_quant_signals_for_deck(report_markdown, max_items=10)
+        layout_defaults = [
+            "thesis",
+            "metrics_dashboard",
+            "chart_focus",
+            "two_column",
+            "risk_matrix",
+            "closing_recommendation",
+        ]
+        default_labels = {
+            "hero": "Context",
+            "thesis": "Thesis",
+            "metrics_dashboard": "Performance",
+            "chart_focus": "Evidence",
+            "two_column": "Drivers",
+            "risk_matrix": "Risk",
+            "closing_recommendation": "Action",
+        }
+        default_emphasis = {
+            "hero": "Strong title treatment with clear committee context.",
+            "thesis": "Lead with one decision and supporting logic.",
+            "metrics_dashboard": "Highlight momentum, quality, and valuation metrics.",
+            "chart_focus": "Use one chart to prove the core argument.",
+            "two_column": "Separate catalysts from constraints for comparison.",
+            "risk_matrix": "Show risk impact, probability, and mitigation framing.",
+            "closing_recommendation": "Convert analysis into decision-ready actions.",
+        }
 
         raw_slides = value.get("slides") if isinstance(value.get("slides"), list) else []
         normalized_slides: List[Dict[str, Any]] = []
@@ -1241,7 +1368,7 @@ Report content:
                 continue
             layout_type = str(item.get("layout_type", "")).strip()
             if layout_type not in allowed_layouts:
-                layout_type = "two_column"
+                layout_type = layout_defaults[min(idx, len(layout_defaults) - 1)]
 
             headline = self._deck_plain_text(
                 str(item.get("headline") or item.get("title") or ""),
@@ -1259,7 +1386,7 @@ Report content:
                         text = bullet.get("text") or bullet.get("body") or bullet.get("title") or ""
                     else:
                         text = str(bullet)
-                    clean = self._deck_plain_text(str(text), max_chars=70)
+                    clean = self._truncate_words(str(text), max_words=11)
                     if clean:
                         bullets.append(clean)
 
@@ -1270,27 +1397,58 @@ Report content:
                 chart_ref = int(chart_ref) if chart_ref is not None else None
             except (TypeError, ValueError):
                 chart_ref = None
+            if chart_ref is not None and (chart_ref < 0 or chart_ref >= chart_count):
+                chart_ref = None
+            if chart_ref is None and layout_type == "chart_focus" and chart_count > 0:
+                chart_ref = min(idx, chart_count - 1)
+
+            metrics = self._normalize_metric_cards(item.get("metrics"))
+            if not metrics and layout_type == "metrics_dashboard":
+                metrics = quant_cards[:4]
+
+            takeaway = self._truncate_words(str(item.get("takeaway", "")), max_words=18)
+            if not takeaway and bullets:
+                takeaway = self._truncate_words(bullets[0], max_words=18)
 
             normalized_slides.append(
                 {
                     "layout_type": layout_type,
                     "section_label": self._deck_plain_text(
-                        str(item.get("section_label") or f"Slide {idx + 1}"),
+                        str(item.get("section_label") or default_labels.get(layout_type, f"Slide {idx + 1}")),
                         max_chars=36,
                     ),
                     "headline": headline,
-                    "takeaway": self._deck_plain_text(str(item.get("takeaway", "")), max_chars=90),
-                    "bullets": bullets[:5],
-                    "metrics": self._normalize_metric_cards(item.get("metrics")),
+                    "takeaway": takeaway,
+                    "bullets": bullets[:3],
+                    "metrics": metrics,
                     "chart_ref": chart_ref,
                     "visual_emphasis": self._deck_plain_text(
-                        str(item.get("visual_emphasis", "")),
+                        str(item.get("visual_emphasis") or default_emphasis.get(layout_type, "")),
                         max_chars=80,
                     ),
                     "speaker_notes": self._deck_plain_text(
                         str(item.get("speaker_notes", "")),
                         max_chars=240,
                     ),
+                }
+            )
+
+        if normalized_slides and normalized_slides[-1]["layout_type"] != "closing_recommendation":
+            normalized_slides.append(
+                {
+                    "layout_type": "closing_recommendation",
+                    "section_label": "Action",
+                    "headline": "Recommendation and immediate committee actions",
+                    "takeaway": self._truncate_words(recommendation, max_words=18),
+                    "bullets": [
+                        "Confirm base case assumptions with internal model outputs.",
+                        "Align entry plan, position sizing, and downside triggers.",
+                        "Set monitoring cadence for catalysts and risk signals.",
+                    ],
+                    "metrics": [],
+                    "chart_ref": None,
+                    "visual_emphasis": "Close with clear choices and ownership.",
+                    "speaker_notes": "",
                 }
             )
 
@@ -1326,50 +1484,101 @@ Report content:
     ) -> Dict[str, Any]:
         """Create a usable visual deck spec without relying on model output."""
         sections = self._extract_report_sections_for_deck(report_markdown)
-        clean_points = [self._deck_plain_text(point, max_chars=70) for point in (key_points or []) if point]
+        chart_count = len(re.findall(r"```html\n(.*?)\n```", report_markdown or "", flags=re.DOTALL))
+        clean_points = [self._truncate_words(point, max_words=11) for point in (key_points or []) if point]
+        quant_cards = self._extract_quant_signals_for_deck(report_markdown, max_items=4)
         thesis = self._deck_plain_text(executive_summary or (sections[0]["body"] if sections else ""), max_chars=150)
+        risk_points = clean_points[2:5] if len(clean_points) >= 3 else [
+            "Macro slowdown can reduce near-term demand visibility.",
+            "Execution miss may compress valuation multiples quickly.",
+            "Regulatory shifts can disrupt forecast assumptions.",
+        ]
         slides: List[Dict[str, Any]] = [
+            {
+                "layout_type": "hero",
+                "section_label": "Context",
+                "headline": f"{company_name}: Investment committee briefing",
+                "takeaway": self._truncate_words("Decision-ready snapshot of thesis, risks, and monitoring priorities.", max_words=18),
+                "bullets": [
+                    "Built from AnalystIQ multi-source evidence.",
+                    "Designed for fast committee discussion.",
+                    "Focuses on decisions, not long narratives.",
+                ],
+                "metrics": [],
+                "chart_ref": None,
+                "visual_emphasis": "Premium opening with confident, concise framing.",
+                "speaker_notes": "",
+            },
             {
                 "layout_type": "thesis",
                 "section_label": "Thesis",
                 "headline": "Investment thesis and key decision points",
-                "takeaway": thesis,
-                "bullets": clean_points[:4],
+                "takeaway": self._truncate_words(thesis, max_words=18),
+                "bullets": clean_points[:3],
                 "metrics": [],
-                "chart_ref": 0,
+                "chart_ref": 0 if chart_count > 0 else None,
                 "visual_emphasis": "Lead with the decision view.",
+                "speaker_notes": "",
+            },
+            {
+                "layout_type": "metrics_dashboard",
+                "section_label": "Performance",
+                "headline": "Operating and valuation scoreboard",
+                "takeaway": "Use concentrated KPIs to frame conviction and debate.",
+                "bullets": [
+                    "Compare momentum, quality, and valuation in one view.",
+                    "Spot where narrative diverges from hard metrics.",
+                    "Guide committee questions before deep dives.",
+                ],
+                "metrics": quant_cards,
+                "chart_ref": None,
+                "visual_emphasis": "Card-based layout with strong numeric hierarchy.",
                 "speaker_notes": "",
             }
         ]
 
-        for idx, section in enumerate(sections[:5]):
+        for idx, section in enumerate(sections[:2]):
             sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", section["body"]) if s.strip()]
             # Enforce conciseness for bullets in fallback
-            bullets = [self._deck_plain_text(sentence, max_chars=70) for sentence in sentences[:4]]
+            bullets = [self._truncate_words(sentence, max_words=11) for sentence in sentences[:4]]
             slides.append(
                 {
                     "layout_type": "chart_focus" if idx % 2 == 0 else "two_column",
                     "section_label": section["title"][:36],
                     "headline": section["title"][:50],
-                    "takeaway": bullets[0] if bullets else "",
-                    "bullets": bullets[1:5] if len(bullets) > 1 else bullets,
+                    "takeaway": self._truncate_words(bullets[0], max_words=18) if bullets else "",
+                    "bullets": bullets[1:4] if len(bullets) > 1 else bullets[:3],
                     "metrics": [],
-                    "chart_ref": idx if idx % 2 == 0 else None,
-                    "visual_emphasis": "",
+                    "chart_ref": min(idx, chart_count - 1) if idx % 2 == 0 and chart_count > 0 else None,
+                    "visual_emphasis": "Use clean contrast and clear hierarchy between evidence blocks.",
                     "speaker_notes": "",
                 }
             )
 
         slides.append(
             {
+                "layout_type": "risk_matrix",
+                "section_label": "Risk",
+                "headline": "Key risks, severity, and mitigation path",
+                "takeaway": "Stress-test downside before sizing the position.",
+                "bullets": risk_points[:3],
+                "metrics": [],
+                "chart_ref": None,
+                "visual_emphasis": "Matrix-style framing to prioritize mitigation actions.",
+                "speaker_notes": "",
+            }
+        )
+
+        slides.append(
+            {
                 "layout_type": "closing_recommendation",
                 "section_label": "Recommendation",
                 "headline": "Committee actions and monitoring plan",
-                "takeaway": "Use the report to validate valuation, catalysts, downside cases, and position sizing.",
+                "takeaway": "Translate analysis into clear committee choices and ownership.",
                 "bullets": [
-            "Confirm thesis with internal models.",
-            "Pressure-test downside risks and catalysts.",
-            "Define clear investment decision criteria.",
+                    "Confirm thesis with internal models and channel checks.",
+                    "Pressure-test downside risks and catalyst timing assumptions.",
+                    "Define position sizing gates and review cadence.",
                 ],
                 "metrics": [],
                 "chart_ref": None,
@@ -1424,15 +1633,18 @@ You are a Manus-style presentation design agent for buy-side investment decks.
 Create a structured visual slide spec for an editable PowerPoint renderer.
 
 Design principles:
-- Use headlines and takeaways, not long prose.
-- Prefer visual layouts: thesis, metrics dashboard, chart focus, two column, risk matrix, closing recommendation.
-- Keep slides sparse and executive-ready.
+- Build a persuasive narrative arc: context -> thesis -> evidence -> risks -> recommendation.
+- Prioritize visual hierarchy and information density suitable for CIO/IC meetings.
+- Use headlines and takeaways, never long prose.
+- Prefer visual layouts: hero, thesis, metrics dashboard, chart focus, two column, risk matrix, closing recommendation.
+- Keep slides sparse and executive-ready with obvious "what matters now" framing.
 - Each slide has max 3 bullets. Each bullet has max 11 words.
-- Each takeaway is max 18 words.
+- Each takeaway has max 18 words.
 - Use chart_ref only when a chart is essential. Available chart_ref values are 0 to {max(chart_count - 1, 0)}.
 - If no chart is needed, set chart_ref to null.
 - Do not invent financial numbers. Use metrics only if supported by the report.
-- Return structured content aligned with the provided output model.
+- Always include one closing_recommendation slide as the final slide.
+- Return valid JSON that matches the output model exactly.
 
 Slide count: 5 to 7 slides, excluding the renderer title slide.
 Company: {company_name}
@@ -1546,6 +1758,12 @@ Report excerpt:
             
             update_progress("🏢 Using cached company name", company_name)
             update_progress("📊 Using cached web and financial results")
+            if report_structure:
+                update_progress("✅ Report structure generated", report_structure)
+            if web_queries:
+                update_progress("🌐 Generated web search queries", web_queries)
+            if financial_queries:
+                update_progress("💹 Generated financial data queries", financial_queries)
 
             context = self._format_context(web_results, financial_results, financial_queries)
             if rewritten_instruction:
@@ -1733,7 +1951,18 @@ Report excerpt:
         if opening_section_preview:
             update_progress("🧭 Opening section extracted", opening_section_preview)
 
-        # 11. Generate executive summary (separate page)
+        # 11. Extract key bullets from main report body (before executive summary)
+        ensure_not_cancelled()
+        update_progress("🔑 Extracting key points from main report...")
+        key_points = await self.extract_five_key_points(
+            company_name=company_name,
+            ticker=ticker,
+            report_content=raw_report,
+            custom_instruction=rewritten_instruction,
+        )
+        update_progress("🔑 Key bullets extracted", key_points)
+
+        # 12. Generate executive summary (separate page)
         ensure_not_cancelled()
         update_progress("📝 Generating executive summary...")
         executive_summary = await self.generate_executive_summary(
@@ -1746,17 +1975,6 @@ Report excerpt:
         executive_summary_preview = self.extract_executive_summary_preview(executive_summary)
         if executive_summary_preview:
             update_progress("🧾 Executive summary extracted", executive_summary_preview)
-
-        # 12. Extract key bullets from main report body
-        ensure_not_cancelled()
-        update_progress("🔑 Extracting key points from main report...")
-        key_points = await self.extract_five_key_points(
-            company_name=company_name,
-            ticker=ticker,
-            report_content=raw_report,
-            custom_instruction=rewritten_instruction,
-        )
-        update_progress("🔑 Key bullets extracted", key_points)
 
         # 13. Generate table of contents (separate page, excludes executive summary)
         ensure_not_cancelled()
@@ -1891,6 +2109,12 @@ Report excerpt:
             
             update_progress("🏢 Using cached company name", company_name)
             update_progress("📊 Using cached web and financial results")
+            if report_structure:
+                update_progress("✅ Report structure generated", report_structure)
+            if web_queries:
+                update_progress("🌐 Generated web search queries", web_queries)
+            if financial_queries:
+                update_progress("💹 Generated financial data queries", financial_queries)
             if rewritten_instruction:
                 update_progress("🧭 Regenerating report structure using validated custom instruction...")
                 regenerated_structure = await self.generate_report_structure(company_name, rewritten_instruction)
@@ -2038,7 +2262,17 @@ Report excerpt:
         if opening_section_preview:
             update_progress("🧭 Opening section extracted", opening_section_preview)
 
-        # 10. Generate executive summary (separate page)
+        # 10. Extract key bullets from main report body (before executive summary)
+        update_progress("🔑 Extracting key points from main report...")
+        key_points = await self.extract_five_key_points(
+            company_name=company_name,
+            ticker=ticker,
+            report_content=raw_report,
+            custom_instruction=rewritten_instruction,
+        )
+        update_progress("🔑 Key bullets extracted", key_points)
+
+        # 11. Generate executive summary (separate page)
         update_progress("📝 Generating comprehensive executive summary...")
         executive_summary = await self.generate_executive_summary(
             company_name,
@@ -2049,16 +2283,6 @@ Report excerpt:
         executive_summary_preview = self.extract_executive_summary_preview(executive_summary)
         if executive_summary_preview:
             update_progress("🧾 Executive summary extracted", executive_summary_preview)
-
-        # 11.5. Extract key bullets from main report body
-        update_progress("🔑 Extracting key points from main report...")
-        key_points = await self.extract_five_key_points(
-            company_name=company_name,
-            ticker=ticker,
-            report_content=raw_report,
-            custom_instruction=rewritten_instruction,
-        )
-        update_progress("🔑 Key bullets extracted", key_points)
 
         # 11. Generate table of contents (separate page, excludes executive summary)
         update_progress("📋 Generating table of contents...")
