@@ -13,8 +13,9 @@ services:
       - key: OPENROUTER_MAX_TOKENS
         value: 4000
 
-  - type: static
+  - type: web
     name: analystiq-frontend
+    runtime: static
     rootDir: frontend
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
