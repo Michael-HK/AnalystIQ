@@ -199,12 +199,12 @@ class ReportStructureOutput(BaseModel):
 class AnalystIQ:
     def __init__(self, verbose_agent: bool = False):
         self.current_date = datetime.now().strftime("%Y-%m-%d")
-        # Keep a conservative default so runs still work on low-credit accounts.
-        max_tokens_env = os.getenv("OPENROUTER_MAX_TOKENS", "1800")
+        # Default to higher output length; override with OPENROUTER_MAX_TOKENS when needed.
+        max_tokens_env = os.getenv("OPENROUTER_MAX_TOKENS", "4000")
         try:
             self.max_tokens = max(500, min(int(max_tokens_env), 8000))
         except ValueError:
-            self.max_tokens = 1800
+            self.max_tokens = 4000
 
 
         self.llm = OpenRouter(
