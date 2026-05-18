@@ -67,8 +67,36 @@ generated_reports/
 tmp/
 temp/
 
+#env files
+.env
+.venv/
+
 # Docker
 .dockerignore
 
 # Redis
 dump.rdb
+
+# Keep frontend config tracked
+!frontend/**/*.json
+
+# Frontend (Vite/React)
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/coverage/
+frontend/.eslintcache
+frontend/*.tsbuildinfo
+
+# Frontend env files (keep example tracked)
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+# Frontend (Vite/React)
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/coverage/
+frontend/.eslintcache
+frontend/*.tsbuildinfo
+generated_reports/
