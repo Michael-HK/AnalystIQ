@@ -9,13 +9,11 @@ interface Props {
   ticker: string;
   reportType: ReportType;
   customInstruction: string;
-  pipeline: "v1" | "v3";
   presentationStyle: string;
   isRunning: boolean;
   onTickerChange: (value: string) => void;
   onReportTypeChange: (value: ReportType) => void;
   onCustomInstructionChange: (value: string) => void;
-  onPipelineChange: (value: "v1" | "v3") => void;
   onPresentationStyleChange: (value: string) => void;
   onGenerate: () => void;
   onCancel: () => void;
@@ -27,13 +25,11 @@ export function ReportConfigPanel(props: Props) {
     ticker,
     reportType,
     customInstruction,
-    pipeline,
     presentationStyle,
     isRunning,
     onTickerChange,
     onReportTypeChange,
     onCustomInstructionChange,
-    onPipelineChange,
     onPresentationStyleChange,
     onGenerate,
     onCancel,
@@ -75,19 +71,6 @@ export function ReportConfigPanel(props: Props) {
           >
             <option value="investment">Investment Report</option>
             <option value="credit">Credit Analysis Report</option>
-          </select>
-        </div>
-
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-slate-700">Pipeline</label>
-          <select
-            className="h-10 w-full rounded-md border border-input bg-white px-3 text-sm"
-            value={pipeline}
-            onChange={(event) => onPipelineChange(event.target.value as "v1" | "v3")}
-            disabled={isRunning}
-          >
-            <option value="v1">AnalystIQ v1</option>
-            <option value="v3">AnalystIQ v3</option>
           </select>
         </div>
 

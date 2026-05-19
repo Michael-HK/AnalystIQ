@@ -27,11 +27,12 @@ export function ArtifactPanel({ job, onGeneratePptx, isGeneratingPptx, onOpenVie
   const [pptxClicked, setPptxClicked] = useState(false);
   const [viewerClicked, setViewerClicked] = useState(false);
 
+  // Reset click-dismiss only for a new job — not when PPTX becomes ready (avoids re-beaming PDF/viewer).
   useEffect(() => {
     setPdfClicked(false);
     setPptxClicked(false);
     setViewerClicked(false);
-  }, [job?.job_id, canDownloadPdf, canDownloadPptx, canOpenViewer]);
+  }, [job?.job_id]);
 
   return (
     <Card>

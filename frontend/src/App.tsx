@@ -13,7 +13,6 @@ function App() {
   const [options, setOptions] = useState<ReportOptions | null>(null);
   const [ticker, setTicker] = useState<string>("");
   const [reportType, setReportType] = useState<ReportType>("investment");
-  const [pipeline, setPipeline] = useState<"v1" | "v3">("v1");
   const [presentationStyle, setPresentationStyle] = useState<string>("Institutional Light");
   const [customInstruction, setCustomInstruction] = useState<string>("");
   const [job, setJob] = useState<ReportJob | null>(null);
@@ -112,7 +111,7 @@ function App() {
         ticker,
         reportType,
         customInstruction,
-        pipeline,
+        pipeline: "v1",
         presentationStyle,
       });
       setJob(created);
@@ -196,13 +195,11 @@ function App() {
             ticker={ticker}
             reportType={reportType}
             customInstruction={customInstruction}
-            pipeline={pipeline}
             presentationStyle={presentationStyle}
             isRunning={isRunning || loading}
             onTickerChange={setTicker}
             onReportTypeChange={setReportType}
             onCustomInstructionChange={setCustomInstruction}
-            onPipelineChange={setPipeline}
             onPresentationStyleChange={setPresentationStyle}
             onGenerate={handleGenerate}
             onCancel={handleCancel}
