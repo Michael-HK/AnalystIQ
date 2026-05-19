@@ -11,7 +11,9 @@
 - **Multi-source data** via web search (Tavily) + financials (yfinance)
 - **LLM orchestration** through OpenRouter (Gemini, GPT, Claude, etc.)
 - **Publication-ready output** with charts, tables, and citations
-- **Streamlit UI** for interactive use; CLI for batch runs
+- **AnalystIQ Studio** — React web UI with live progress, research panels, and artifact downloads
+- **FastAPI backend** with SSE job streaming and immersive report viewer
+- **Streamlit UI** (legacy) and **CLI** for batch runs
 - **Caching** with Redis to cut latency and API spend
 
 ## 📊 Report Structure
@@ -30,26 +32,36 @@ Each generated report follows a professional investment analysis structure:
 ## 🏗️ Architecture
 
 ```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Streamlit UI  │────│  AgentInvest     │────│  Report Engine  │
-│                 │    │     Core         │    │                 │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
-                                │
-                ┌───────────────┼───────────────┐
-                │               │               │
-        ┌───────▼──────┐ ┌──────▼──────┐ ┌─────▼──────┐
-        │ Web Search   │ │ Financial   │ │  AI Models │
-        │   (Tavily)   │ │ Data (YF)   │ │  (Gemini)  │
-        └──────────────┘ └─────────────┘ └────────────┘
+┌──────────────────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│  AnalystIQ Studio (UI)   │────▶│  FastAPI (API)   │────▶│  AgentInvest    │
+│  Vite + React + Tailwind │     │  web_api.py      │     │  Core (agent.py)│
+└──────────────────────────┘     └──────────────────┘     └─────────────────┘
+                                           │                         │
+                                           │              ┌──────────┼──────────┐
+                                           │              │          │          │
+                                    ┌──────▼──────┐ ┌─────▼─────┐ ┌──▼────────┐
+                                    │ SSE / Jobs  │ │ Web Search│ │ Financial │
+                                    │ + Artifacts │ │  (Tavily) │ │ Data (YF) │
+                                    └─────────────┘ └───────────┘ └───────────┘
 ```
 
 ## 🛠️ Tech Stack
 
 ### Core Technologies
-- **Python 3.10+** - Primary programming language
-- **Streamlit** - Web application framework
+- **Python 3.10+** - Backend and agent orchestration
+- **FastAPI** - REST API, job lifecycle, SSE progress, artifact delivery
 - **OpenRouter** - Unified API for accessing multiple LLM models (Gemini, GPT, Claude, etc.)
 - **LlamaIndex** - AI agent framework and tools
+
+### Frontend (AnalystIQ Studio)
+- **Vite 5** - Dev server and production bundler
+- **React 18** + **TypeScript** - Component-based UI
+- **Tailwind CSS 3** - Utility-first styling and design tokens
+- **shadcn/ui-style primitives** - Radix UI + `class-variance-authority` (Card, Dialog, Button, etc.)
+- **Lucide React** - Icons
+
+### Legacy UI
+- **Streamlit** - Original interactive interface (`streamlit_app.py`)
 
 ### Data Sources
 - **Yahoo Finance (yfinance)** - Financial data and market information
@@ -82,6 +94,7 @@ AgentInvest uses **OpenRouter** as the LLM provider, offering several advantages
 
 ### System Requirements
 - Python 3.10+ or higher
+- **Node.js 18+** and **npm** (for local frontend development)
 - 4GB+ RAM recommended
 - Internet connection for API access
 - Playwright Chromium browser (automatically installed)
@@ -130,14 +143,41 @@ $env:OPENROUTER_API_KEY="YOUR_OPENROUTER_API_KEY"
    python -m playwright install chromium
    ```
 
-6. **Launch Streamlit app**
+6. **Run AnalystIQ Studio (recommended)**
+
+   Use two terminals — API first, then the frontend.
+
+   **Terminal 1 — API**
+   ```bash
+   uvicorn web_api:app --reload --port 8000
+   ```
+
+   **Terminal 2 — Frontend**
+   ```bash
+   cd frontend
+   npm install
+   npm run dev
+   ```
+
+   Open **http://localhost:5173**. The Vite dev server proxies `/api` to `http://127.0.0.1:8000`.
+
+   **Production-style (single process)** — build the UI and serve it from FastAPI:
+   ```bash
+   cd frontend
+   npm ci
+   $env:VITE_ANALYSTIQ_API_BASE="/api"   # Windows PowerShell
+   # export VITE_ANALYSTIQ_API_BASE=/api   # macOS/Linux
+   npm run build
+   cd ..
+   uvicorn web_api:app --host 0.0.0.0 --port 8000
+   ```
+   Then open **http://localhost:8000**.
+
+7. **Legacy Streamlit app (optional)**
    ```bash
    python -m streamlit run streamlit_app.py
    ```
-
-7. **Access the web application**
-   - Open your browser to `http://localhost:8501`
-   - Select a stock ticker and generate your first report!
+   Open **http://localhost:8501**.
 
 8. **CLI**
    - Open terminal and type in
@@ -153,10 +193,13 @@ python main.py 0005.HK
 
 ### Quick Reference Commands
 
-| Task | Python Command |
-|------|----------------|
-| **Start Streamlit** | `python -m  streamlit run streamlit_app.py` |
-| **Generate Report** | `python -m main AAPL` |
+| Task | Command |
+|------|---------|
+| **Start API** | `uvicorn web_api:app --reload --port 8000` |
+| **Start frontend (dev)** | `cd frontend && npm run dev` |
+| **Build frontend** | `cd frontend && npm run build` |
+| **Start Streamlit (legacy)** | `python -m streamlit run streamlit_app.py` |
+| **Generate Report (CLI)** | `python -m main AAPL` |
 
 ## Supported Stock Tickers
 
@@ -164,50 +207,103 @@ The application supports:
 - **US Stocks**: AAPL, MSFT, GOOGL, AMZN, NVDA, TSLA, etc.
 - **Hong Kong Stocks**: 0001.HK, 0002.HK, etc. (200+ tickers)
 
-### Web Interface
-1. Navigate to the Streamlit application
-2. Select a stock ticker from the dropdown
-3. Click "Generate Report"
-4. Monitor progress in real-time
-5. Download report directly from the **left sidebar** once ready
-6. Click **Generate Presentation (PPTX)** after report completion
-7. Download presentation directly from the sidebar when generation is complete
+### Web Interface (AnalystIQ Studio)
+1. Open the app at `http://localhost:5173` (dev) or your deployed URL
+2. Configure **Ticker**, **Report Type**, **Presentation Style**, and optional custom instructions
+3. Click **Generate Report** and follow the status strip and activity timeline
+4. Review **Report Snapshot** (brief + decision highlights) as sections complete
+5. Download **PDF** or generate/download **PPTX** from Executive Deliverables
+6. Open the **Immersive Report Viewer** for the full rendered report with citations and charts
 
 ## 🖼️ Frontend Screenshots
 
-### Overview
-![AgentInvest UI Overview](docs/images/ui-overview.png)
+### AnalystIQ Studio — Workspace Overview
+Configuration sidebar, executive deliverables, research outline, and live activity timeline during report generation.
 
-### Investment Snapshot and Timeline
-![Investment Snapshot](docs/images/ui-investment-snapshot.png)
+![AnalystIQ Studio workspace](docs/images/ui-workspace-overview.png)
 
-### Market Signals Tab
-![Market Signals](docs/images/ui-market-signals.png)
+### Report Snapshot
+Report Brief with linked citations and Decision Highlights as synthesis completes.
 
-### Financial Highlights Tab
-![Financial Highlights](docs/images/ui-financial-highlights.png)
+![Report Snapshot](docs/images/ui-report-snapshot.png)
+
+### Immersive Report Viewer
+Full rendered report with expandable sections, citations, and references.
+
+![Immersive Report Viewer](docs/images/ui-immersive-viewer.png)
+
+### Report Viewer — Charts and Analysis
+Embedded Chart.js visualizations and section-level analysis in the immersive viewer.
+
+![Immersive viewer with charts](docs/images/ui-immersive-viewer-charts.png)
+
+## 💻 Frontend Development
+
+### Project layout
+
+```
+frontend/
+├── src/
+│   ├── App.tsx                    # Main workspace shell
+│   ├── features/
+│   │   ├── report-config/         # Ticker, report type, instructions
+│   │   ├── report-runner/         # Status, timeline, research, snapshot
+│   │   ├── artifacts/             # PDF / PPTX downloads
+│   │   └── report-viewer/         # Immersive viewer dialog
+│   ├── components/ui/             # shadcn-style primitives
+│   └── lib/api.ts                 # API client (/api proxy in dev)
+├── vite.config.ts                 # Dev server + /api → :8000 proxy
+└── package.json
+```
+
+### npm scripts
+
+| Script | Description |
+|--------|-------------|
+| `npm run dev` | Start Vite on port **5173** with hot reload |
+| `npm run build` | Typecheck and build to `frontend/dist` |
+| `npm run preview` | Preview production build locally |
+| `npm run lint` | Run ESLint |
+
+### Environment
+
+| Variable | Default (dev) | Description |
+|----------|---------------|-------------|
+| `VITE_ANALYSTIQ_API_BASE` | `/api` (via Vite proxy) | API base path for fetch/SSE |
+
+Set `VITE_ANALYSTIQ_API_BASE=/api` when building for production (see `render.yaml`).
+
+### Deployed app
+
+Production is a **single service**: FastAPI serves the API and the built React app from `frontend/dist` on the same origin (e.g. `https://invest-report-workflow.onrender.com`).
 
 ## 📁 Project Structure
 
 ```
 PoC_AgentInvest/
 ├── agent.py                 # Core AgentInvest class
-├── streamlit_app.py         # Web interface
+├── web_api.py               # FastAPI app (jobs, SSE, artifacts, static UI)
+├── streamlit_app.py         # Legacy Streamlit interface
 ├── main.py                  # CLI entry point
+├── report_viewer.py         # Immersive HTML report viewer
+├── ppt_export.py            # PPTX generation
 ├── prompts.py               # AI prompts and templates
 ├── utils.py                 # Playwright-based PDF generation utilities
 ├── cache_manager.py         # Redis caching layer
-├── gemini_vertex.py         # Legacy Vertex AI integration (deprecated)
-├── plot_utils.py           # Chart generation utilities
-├── tickers.py              # Supported stock tickers
+├── plot_utils.py            # Chart generation utilities
+├── tickers.py               # Supported stock tickers
 ├── requirements.txt         # Python dependencies
-├── tools/                  # Specialized tools
-│   ├── web_search.py       # Tavily web search
-│   ├── financial_tools.py  # Yahoo Finance integration
+├── render.yaml              # Render.com deployment blueprint
+├── frontend/                # AnalystIQ Studio (Vite + React + TypeScript)
+│   ├── src/
+│   └── package.json
+├── tools/
+│   ├── web_search.py        # Tavily web search
+│   ├── financial_tools.py   # Yahoo Finance integration
 │   └── __init__.py
 ├── docs/
-│   └── images/             # README screenshots
-└── generated_reports/      # Output directory for reports
+│   └── images/              # README screenshots
+└── generated_reports/       # Output directory for reports
 ```
 
 ## 🔍 Key Components
@@ -226,6 +322,12 @@ Converts Markdown reports with embedded charts into professional PDF documents u
 
 ### Caching System (`cache_manager.py`)
 Redis-based caching to improve performance and reduce API costs.
+
+### Web API (`web_api.py`)
+FastAPI application: report job queue, SSE progress stream, PDF/PPTX artifacts, health check, and serving the production React build.
+
+### Frontend (`frontend/`)
+AnalystIQ Studio — institutional research workspace with configuration panel, live timeline, report snapshot, and immersive viewer.
 
 ## 📄 License
 
