@@ -94,6 +94,10 @@ frontend/*.tsbuildinfo
 frontend/.env
 frontend/.env.*
 !frontend/.env.example
+
+frontend/vite.config.js
+frontend/vite.config.d.ts
+
 # Frontend (Vite/React)
 frontend/node_modules/
 frontend/dist/

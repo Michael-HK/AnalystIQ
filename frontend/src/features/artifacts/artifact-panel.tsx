@@ -24,12 +24,14 @@ export function ArtifactPanel({ job, onGeneratePptx, isGeneratingPptx, onOpenVie
   const canOpenViewer = Boolean(job?.artifacts.markdown_ready);
   const canDownloadPptx = Boolean(job?.artifacts.ppt_ready);
   const [pdfClicked, setPdfClicked] = useState(false);
+  const [pptxClicked, setPptxClicked] = useState(false);
   const [viewerClicked, setViewerClicked] = useState(false);
 
   useEffect(() => {
     setPdfClicked(false);
+    setPptxClicked(false);
     setViewerClicked(false);
-  }, [job?.job_id, canDownloadPdf, canOpenViewer]);
+  }, [job?.job_id, canDownloadPdf, canDownloadPptx, canOpenViewer]);
 
   return (
     <Card>
@@ -64,8 +66,9 @@ export function ArtifactPanel({ job, onGeneratePptx, isGeneratingPptx, onOpenVie
         <a href={downloadHref(job, "pptx")} target="_blank" rel="noreferrer">
           <Button
             variant="outline"
-            className={`w-full justify-start gap-2 ${canDownloadPptx ? "attention-beam" : ""}`}
+            className={`w-full justify-start gap-2 ${canDownloadPptx && !pptxClicked ? "attention-beam" : ""}`}
             disabled={!canDownloadPptx}
+            onClick={() => setPptxClicked(true)}
           >
             <Download className="h-4 w-4" />
             Download PPTX
