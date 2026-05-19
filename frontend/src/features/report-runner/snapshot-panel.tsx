@@ -5,6 +5,23 @@ interface Props {
   job: ReportJob | null;
 }
 
+type ReferenceLink = NonNullable<ReportJob["reference_links"]>[string];
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function buildCitationPreview(link: ReferenceLink): string {
+  const title = (link.title || link.url || "").trim();
+  const domain = (link.domain || "").trim();
+  const preview = domain ? `${title} (${domain})` : title;
+  return preview.length <= 220 ? preview : `${preview.slice(0, 217)}...`;
+}
+
 export function SnapshotPanel({ job }: Props) {
   const preview = job?.opening_section_preview?.trim();
   const keyPoints = job?.key_points ?? [];
@@ -23,7 +40,12 @@ export function SnapshotPanel({ job }: Props) {
       const parts = nums.map((num: string) => {
         const link = referenceLinks[num];
         if (!link?.url) return num;
-        return `<a href="${link.url}" target="_blank" rel="noopener noreferrer" class="text-blue-700 underline">${num}</a>`;
+        const previewText = escapeHtml(buildCitationPreview(link));
+        const url = escapeHtml(link.url);
+        return (
+          `<a href="${url}" target="_blank" rel="noopener noreferrer" ` +
+          `class="brief-citation-link" data-preview="${previewText}">[${num}]</a>`
+        );
       });
       return `[${parts.join(", ")}]`;
     });
@@ -38,11 +60,11 @@ export function SnapshotPanel({ job }: Props) {
         <CardDescription>Executive opening and headline takeaways.</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4 lg:grid-cols-[2fr,1fr]">
-        <div className="rounded-md border border-border bg-slate-50 p-4">
+        <div className="overflow-visible rounded-md border border-border bg-slate-50 p-4">
           <h4 className="mb-2 text-sm font-semibold text-slate-800">Report Brief</h4>
           {preview ? (
             <div
-              className="whitespace-pre-wrap text-sm leading-7 text-slate-700"
+              className="report-brief-content whitespace-pre-wrap text-sm leading-7 text-slate-700"
               dangerouslySetInnerHTML={{ __html: renderBriefHtml(preview) }}
             />
           ) : (
