@@ -91,8 +91,13 @@ body {
   animation: beamSlide 1.8s linear infinite;
 }
 
+.report-brief-content {
+  overflow: visible;
+}
+
 .brief-citation-link {
   position: relative;
+  display: inline-block;
   font-weight: 600;
   color: #1d4ed8;
   text-decoration: none;

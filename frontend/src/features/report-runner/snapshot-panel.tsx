@@ -32,7 +32,7 @@ function citationAnchor(num: string, link: ReferenceLink | undefined): string {
   const preview = escapeHtml(citationPreview(link));
   const url = escapeHtml(link.url);
   return (
-    `<a href="${url}" class="brief-citation-link" data-preview="${preview}" ` +
+    `<a href="${url}" class="brief-citation-link" data-preview="${preview}" title="${preview}" ` +
     `target="_blank" rel="noopener noreferrer">[${escapeHtml(num)}]</a>`
   );
 }
@@ -60,7 +60,7 @@ export function SnapshotPanel({ job }: Props) {
   };
 
   return (
-    <Card>
+    <Card className="overflow-visible">
       <CardHeader>
         <CardTitle>Report Snapshot</CardTitle>
         <CardDescription>Executive opening and headline takeaways.</CardDescription>

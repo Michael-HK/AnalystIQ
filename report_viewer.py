@@ -2,7 +2,7 @@ import html
 import re
 import urllib.parse
 from dataclasses import dataclass
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import markdown2
 
@@ -80,7 +80,7 @@ def _replace_citations(markdown_text: str, reference_links: Dict[str, Dict[str, 
 
         return (
             f'<a href="{url}" class="citation-link" data-preview="{preview_attr}" '
-            f'target="_blank" rel="noopener noreferrer">[{citation_number}]</a>'
+            f'title="{preview_attr}" target="_blank" rel="noopener noreferrer">[{citation_number}]</a>'
         )
 
     for i, chunk in enumerate(chunks):
@@ -166,9 +166,15 @@ def _render_section_html(section: ReportSection, reference_links: Dict[str, Dict
     return _anchor_links_new_tab(section_html)
 
 
-def build_report_viewer_html(markdown_text: str, report_label: str) -> str:
+def build_report_viewer_html(
+    markdown_text: str,
+    report_label: str,
+    reference_links: Optional[Dict[str, Dict[str, str]]] = None,
+) -> str:
     sections = _extract_sections(markdown_text)
-    reference_links = _extract_reference_links(markdown_text)
+    merged_links = dict(reference_links or {})
+    merged_links.update(_extract_reference_links(markdown_text))
+    reference_links = merged_links
 
     details_html: List[str] = []
     for idx, section in enumerate(sections):
@@ -260,7 +266,7 @@ def build_report_viewer_html(markdown_text: str, report_label: str) -> str:
       border: 1px solid var(--border);
       border-radius: 10px;
       margin-bottom: 0.8rem;
-      overflow: hidden;
+      overflow: visible;
     }}
     .section-card > summary {{
       list-style: none;
@@ -278,6 +284,7 @@ def build_report_viewer_html(markdown_text: str, report_label: str) -> str:
       padding: 0.82rem 1rem 1rem 1rem;
       line-height: 1.68;
       font-size: 0.945rem;
+      overflow: visible;
     }}
     .section-body h1, .section-body h2, .section-body h3, .section-body h4 {{
       letter-spacing: -0.01em;
