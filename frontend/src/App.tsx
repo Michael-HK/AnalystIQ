@@ -82,7 +82,11 @@ function App() {
   }, [job?.job_id]);
 
   const isRunning = useMemo(() => job?.status === "running" || job?.status === "queued", [job?.status]);
+  const showEngagementBeam = isRunning || isGeneratingPptx;
   const runningFocusText = useMemo(() => {
+    if (isGeneratingPptx) {
+      return "EXPORT: Generating editable PowerPoint presentation from your completed report...";
+    }
     if (!logs.length) {
       return "AnalystIQ is researching market signals, validating financial context, and composing your report...";
     }
@@ -96,7 +100,7 @@ function App() {
     }
     const phaseLabel = latest.phase ? latest.phase.toUpperCase() : "STATUS";
     return `${phaseLabel}: ${cleanMessage}`;
-  }, [logs]);
+  }, [isGeneratingPptx, logs]);
 
   const handleGenerate = async () => {
     if (!ticker) return;
@@ -173,7 +177,7 @@ function App() {
           </p>
         </section>
 
-        {isRunning ? (
+        {showEngagementBeam ? (
           <section className="overflow-hidden rounded-xl border border-blue-200 bg-blue-50/70 p-3">
             <div className="running-beam h-2 rounded-full" />
             <p className="marquee-text mt-2 text-sm font-medium text-blue-700">
