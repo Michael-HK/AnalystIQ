@@ -65,12 +65,12 @@ export function SnapshotPanel({ job }: Props) {
         <CardTitle>Report Snapshot</CardTitle>
         <CardDescription>Executive opening and headline takeaways.</CardDescription>
       </CardHeader>
-      <CardContent className="grid gap-4 lg:grid-cols-[2fr,1fr]">
+      <CardContent className="grid gap-4 overflow-visible lg:grid-cols-[2fr,1fr]">
         <div className="overflow-visible rounded-md border border-border bg-slate-50 p-4">
           <h4 className="mb-2 text-sm font-semibold text-slate-800">Report Brief</h4>
           {preview ? (
             <div
-              className="whitespace-pre-wrap text-sm leading-7 text-slate-700"
+              className="report-brief-content whitespace-pre-wrap text-sm leading-7 text-slate-700"
               dangerouslySetInnerHTML={{ __html: renderBriefHtml(preview) }}
             />
           ) : (
