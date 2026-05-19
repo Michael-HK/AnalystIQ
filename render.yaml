@@ -1,8 +1,13 @@
 services:
   - type: web
-    name: analystiq-api
+    name: invest-report-workflow
     env: python
-    buildCommand: pip install -r requirements.txt && python -m playwright install chromium
+    buildCommand: >-
+      pip install -r requirements.txt &&
+      python -m playwright install chromium &&
+      cd frontend &&
+      npm ci &&
+      VITE_ANALYSTIQ_API_BASE=/api npm run build
     startCommand: uvicorn web_api:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
@@ -12,17 +17,3 @@ services:
         sync: false
       - key: OPENROUTER_MAX_TOKENS
         value: 4000
-
-  - type: web
-    name: analystiq-frontend
-    runtime: static
-    rootDir: frontend
-    buildCommand: npm ci && npm run build
-    staticPublishPath: dist
-    envVars:
-      - key: VITE_ANALYSTIQ_API_BASE
-        sync: false
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html

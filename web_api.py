@@ -11,9 +11,10 @@ from pathlib import Path
 from queue import Empty, Queue
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from agent import AnalystIQ
@@ -33,6 +34,7 @@ PRESENTATION_STYLES = [
 ]
 
 ARTIFACTS_DIR = Path(__file__).resolve().parent / "generated_reports"
+FRONTEND_DIST_DIR = Path(__file__).resolve().parent / "frontend" / "dist"
 
 
 def utc_iso() -> str:
@@ -203,6 +205,7 @@ class JobStore:
 
 
 store = JobStore()
+router = APIRouter()
 app = FastAPI(title="AnalystIQ API", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
@@ -372,7 +375,7 @@ def health() -> Dict[str, str]:
     return {"status": "ok"}
 
 
-@app.get("/reports/options")
+@router.get("/reports/options")
 def report_options() -> Dict[str, Any]:
     return {
         "tickers": TICKERS,
@@ -381,12 +384,12 @@ def report_options() -> Dict[str, Any]:
     }
 
 
-@app.get("/reports/jobs")
+@router.get("/reports/jobs")
 def list_jobs() -> List[Dict[str, Any]]:
     return store.list()
 
 
-@app.post("/reports/jobs")
+@router.post("/reports/jobs")
 def create_job(payload: ReportJobRequest) -> Dict[str, Any]:
     job = store.create(payload)
     worker = threading.Thread(target=_job_worker, args=(job,), daemon=True)
@@ -395,12 +398,12 @@ def create_job(payload: ReportJobRequest) -> Dict[str, Any]:
     return job.to_dict()
 
 
-@app.get("/reports/jobs/{job_id}")
+@router.get("/reports/jobs/{job_id}")
 def get_job(job_id: str) -> Dict[str, Any]:
     return store.get(job_id).to_dict()
 
 
-@app.get("/reports/jobs/{job_id}/events")
+@router.get("/reports/jobs/{job_id}/events")
 async def stream_job_events(job_id: str, request: Request, from_event_id: int = 0) -> StreamingResponse:
     job = store.get(job_id)
     last_event_id_header = request.headers.get("last-event-id")
@@ -427,7 +430,7 @@ async def stream_job_events(job_id: str, request: Request, from_event_id: int = 
     return StreamingResponse(_generator(), media_type="text/event-stream")
 
 
-@app.post("/reports/jobs/{job_id}/cancel", response_model=JobCancelResponse)
+@router.post("/reports/jobs/{job_id}/cancel", response_model=JobCancelResponse)
 def cancel_job(job_id: str) -> JobCancelResponse:
     job = store.get(job_id)
     if job.status not in ("running", "queued"):
@@ -436,7 +439,7 @@ def cancel_job(job_id: str) -> JobCancelResponse:
     return JobCancelResponse(job_id=job_id, status="cancelling")
 
 
-@app.post("/reports/jobs/{job_id}/pptx")
+@router.post("/reports/jobs/{job_id}/pptx")
 def build_pptx(job_id: str) -> Dict[str, Any]:
     job = store.get(job_id)
     if not job.report_md_path or not os.path.exists(job.report_md_path):
@@ -473,7 +476,7 @@ def build_pptx(job_id: str) -> Dict[str, Any]:
     return {"path": pptx_path, "ready": True}
 
 
-@app.get("/reports/jobs/{job_id}/artifacts/{artifact_type}")
+@router.get("/reports/jobs/{job_id}/artifacts/{artifact_type}")
 def download_artifact(job_id: str, artifact_type: str) -> FileResponse:
     job = store.get(job_id)
     path_lookup = {
@@ -494,7 +497,7 @@ def download_artifact(job_id: str, artifact_type: str) -> FileResponse:
     return FileResponse(file_path, media_type=media_types[artifact_type], filename=os.path.basename(file_path))
 
 
-@app.get("/reports/jobs/{job_id}/viewer", response_class=HTMLResponse)
+@router.get("/reports/jobs/{job_id}/viewer", response_class=HTMLResponse)
 def report_viewer(job_id: str) -> HTMLResponse:
     job = store.get(job_id)
     if not job.report_md_path or not os.path.exists(job.report_md_path):
@@ -502,3 +505,37 @@ def report_viewer(job_id: str) -> HTMLResponse:
     markdown_text = load_report_markdown(job.report_md_path)
     title = f"{job.ticker} - {job.report_type.title()} Report"
     return HTMLResponse(build_report_viewer_html(markdown_text, title))
+
+
+app.include_router(router, prefix="/api")
+
+
+def _mount_frontend(application: FastAPI) -> None:
+    """Serve the Vite production build from the same origin as the API."""
+    if not FRONTEND_DIST_DIR.exists():
+        return
+
+    index_path = FRONTEND_DIST_DIR / "index.html"
+    assets_dir = FRONTEND_DIST_DIR / "assets"
+    if assets_dir.exists():
+        application.mount("/assets", StaticFiles(directory=assets_dir), name="frontend-assets")
+
+    @application.get("/")
+    def serve_frontend_root() -> FileResponse:
+        if not index_path.exists():
+            raise HTTPException(status_code=404, detail="Frontend build not found.")
+        return FileResponse(index_path)
+
+    @application.get("/{full_path:path}")
+    def serve_frontend_path(full_path: str) -> FileResponse:
+        if full_path.startswith("api") or full_path == "health":
+            raise HTTPException(status_code=404, detail="Not found.")
+        candidate = FRONTEND_DIST_DIR / full_path
+        if candidate.is_file():
+            return FileResponse(candidate)
+        if not index_path.exists():
+            raise HTTPException(status_code=404, detail="Frontend build not found.")
+        return FileResponse(index_path)
+
+
+_mount_frontend(app)

@@ -9,10 +9,15 @@
 
 ## Local development
 
-1. Start API:
-   - `uvicorn web_api:app --reload --port 8000` from `PoC_AgentInvest`.
-2. Start frontend:
+1. Start API from `PoC_AgentInvest`:
+   - `uvicorn web_api:app --reload --port 8000`
+2. Start frontend from `frontend`:
    - `npm install`
    - `npm run dev`
 
-Set `VITE_ANALYSTIQ_API_BASE` in `.env.local` if API is not at `http://localhost:8000`.
+The Vite dev server proxies `/api` to `http://127.0.0.1:8000`.
+
+## Production (Render)
+
+The FastAPI app serves the built frontend from `frontend/dist` on the same domain.
+Use `VITE_ANALYSTIQ_API_BASE=/api` during build (already set in `render.yaml`).
