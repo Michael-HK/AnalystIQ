@@ -1,4 +1,10 @@
 services:
+  - type: redis
+    name: analystiq-cache
+    plan: free
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList: []
+
   - type: web
     name: invest-report-workflow
     env: python
@@ -17,3 +23,8 @@ services:
         sync: false
       - key: OPENROUTER_MAX_TOKENS
         value: 4000
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: analystiq-cache
+          property: connectionString

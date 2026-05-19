@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from agent import AnalystIQ
+from cache_manager import _create_redis_client
 from ppt_export import build_professional_pptx
 from report_viewer import build_report_viewer_html, load_report_markdown
 from tickers import TICKERS
@@ -281,17 +282,24 @@ def _job_worker(job: JobState) -> None:
                 job.report_md_path = data
             elif "pdf report saved" in lowered:
                 job.pdf_path = data
-            elif "company name inferred" in lowered or "identified company" in lowered:
+            elif (
+                "company name inferred" in lowered
+                or "identified company" in lowered
+                or "cached company name" in lowered
+            ):
                 job.company_name = data
             if data.strip().lower().endswith(".md"):
                 job.report_md_path = data.strip()
             if data.strip().lower().endswith(".pdf"):
                 job.pdf_path = data.strip()
         # Some progress lines include company name in the message itself.
-        if "identified company" in message.lower() and ":" in message:
+        lowered_message = message.lower()
+        if "identified company" in lowered_message and ":" in message:
             parsed_company = message.split(":", 1)[1].strip()
             if parsed_company:
                 job.company_name = parsed_company
+        elif "cached company name" in lowered_message and isinstance(data, str) and data.strip():
+            job.company_name = data.strip()
 
         _append_event(job, "progress", log_entry)
 
@@ -371,8 +379,16 @@ def _sse_encode(event: Dict[str, Any]) -> str:
 
 
 @app.get("/health")
-def health() -> Dict[str, str]:
-    return {"status": "ok"}
+def health() -> Dict[str, Any]:
+    cache_enabled = False
+    if os.getenv("REDIS_URL") or os.getenv("REDIS_HOST"):
+        try:
+            redis_client = _create_redis_client()
+            redis_client.ping()
+            cache_enabled = True
+        except Exception:
+            cache_enabled = False
+    return {"status": "ok", "cache_enabled": cache_enabled}
 
 
 @router.get("/reports/options")
