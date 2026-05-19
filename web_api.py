@@ -115,7 +115,6 @@ class JobState:
     opening_section_preview: Optional[str] = None
     executive_summary_preview: Optional[str] = None
     key_points: List[str] = field(default_factory=list)
-    reference_links: Dict[str, Dict[str, str]] = field(default_factory=dict)
     generated_data: Dict[str, Any] = field(default_factory=dict)
     logs: List[Dict[str, Any]] = field(default_factory=list)
     events: List[Dict[str, Any]] = field(default_factory=list)
@@ -127,13 +126,13 @@ class JobState:
     worker_thread: Optional[threading.Thread] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        reference_links: Dict[str, Dict[str, str]] = dict(self.reference_links or {})
+        reference_links: Dict[str, Dict[str, str]] = {}
         if self.report_md_path and os.path.exists(self.report_md_path):
             try:
                 report_markdown = load_report_markdown(self.report_md_path)
-                reference_links.update(extract_reference_links(report_markdown))
+                reference_links = extract_reference_links(report_markdown)
             except Exception:
-                pass
+                reference_links = {}
         return {
             "job_id": self.job_id,
             "ticker": self.ticker,
@@ -252,10 +251,6 @@ def _job_worker(job: JobState) -> None:
             "data": data,
         }
         job.logs.append(log_entry)
-        if isinstance(data, dict) and "source references mapped" in message.lower():
-            job.reference_links = {
-                str(key): value for key, value in data.items() if isinstance(value, dict)
-            }
         if isinstance(data, list):
             lowered_msg = message.lower()
             # Report structure
@@ -525,9 +520,7 @@ def report_viewer(job_id: str) -> HTMLResponse:
         raise HTTPException(status_code=404, detail="Markdown report not found.")
     markdown_text = load_report_markdown(job.report_md_path)
     title = f"{job.ticker} - {job.report_type.title()} Report"
-    reference_links = dict(job.reference_links or {})
-    reference_links.update(extract_reference_links(markdown_text))
-    return HTMLResponse(build_report_viewer_html(markdown_text, title, reference_links=reference_links))
+    return HTMLResponse(build_report_viewer_html(markdown_text, title))
 
 
 app.include_router(router, prefix="/api")

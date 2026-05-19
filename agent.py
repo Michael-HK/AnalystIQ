@@ -7,7 +7,6 @@ import asyncio
 import json
 import ast
 import re
-import urllib.parse
 from typing import List, Dict, Any, Optional, Callable, Tuple
 from datetime import datetime
 from tenacity import retry, wait_exponential, stop_after_attempt
@@ -512,21 +511,6 @@ Rules:
                 source_idx += 1
 
         print(f"DEBUG: Context formatting complete. Total sources mapped: {len(self.source_map)}")
-
-    def _build_reference_links_payload(self) -> Dict[str, Dict[str, str]]:
-        """Expose source_map as frontend/viewer-friendly citation metadata."""
-        links: Dict[str, Dict[str, str]] = {}
-        for num, info in self.source_map.items():
-            if not isinstance(info, dict):
-                continue
-            url = str(info.get("url", "")).strip()
-            if not url:
-                continue
-            parsed = urllib.parse.urlparse(url)
-            domain = parsed.netloc.removeprefix("www.")
-            title = str(info.get("title", url)).strip()
-            links[str(num)] = {"url": url, "title": title, "domain": domain}
-        return links
         return formatted_context.strip()
 
     @retry(wait=wait_exponential(multiplier=1, min=2, max=60), stop=stop_after_attempt(3))
@@ -1847,10 +1831,6 @@ Report excerpt:
             update_progress("📝 Formatting and consolidating research data...")
             context = self._format_context(web_results, financial_results, financial_queries or [])
             _cache(context=context)
-
-        reference_links = self._build_reference_links_payload()
-        if reference_links:
-            update_progress("📚 Source references mapped", reference_links)
 
         return (
             company_name,
