@@ -7,7 +7,7 @@ import asyncio
 import json
 import ast
 import re
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Callable, Tuple
 from datetime import datetime
 from tenacity import retry, wait_exponential, stop_after_attempt
 from dotenv import load_dotenv
@@ -1693,6 +1693,155 @@ Report excerpt:
             key_points=key_points,
         )
 
+    async def _prepare_research_plan(
+        self,
+        ticker: str,
+        report_type: str,
+        rewritten_instruction: str,
+        update_progress: ProgressCallback,
+        ensure_not_cancelled: Callable[[], None],
+    ) -> Optional[Tuple[str, List[str], str, List[Any], List[Any], List[str], List[Dict[str, str]]]]:
+        """
+        Load or build planning artifacts with per-step Redis caching for durability.
+        Returns None when report structure generation fails.
+        """
+        cache = self.cache_manager.get_cached_data(ticker, report_type=report_type) or {}
+        refresh_structure = bool(rewritten_instruction)
+
+        def _cache(**fields: Any) -> None:
+            self.cache_manager.merge_cached_data(ticker, report_type=report_type, **fields)
+
+        ensure_not_cancelled()
+        company_name = str(cache.get("company_name") or "").strip()
+        if company_name:
+            update_progress("🏢 Using cached company name", company_name)
+        else:
+            company_name = self.financial_tools.get_company_name(ticker)
+            update_progress("🏢 Identified company", company_name)
+            _cache(company_name=company_name)
+
+        report_structure = list(cache.get("structure") or [])
+        if refresh_structure:
+            report_structure = []
+        if report_structure:
+            update_progress("✅ Using cached report outline", report_structure)
+        else:
+            ensure_not_cancelled()
+            if refresh_structure:
+                update_progress("🧭 Regenerating report outline using validated custom instruction...")
+            else:
+                update_progress("🏗️ Generating report structure...")
+            report_structure = await self.generate_report_structure(
+                company_name,
+                rewritten_instruction,
+                report_type=report_type,
+            )
+            if not report_structure:
+                update_progress("❌ Failed to generate report structure. Aborting.")
+                return None
+            update_progress("✅ Report structure generated", report_structure)
+            _cache(structure=report_structure)
+
+        web_queries = list(cache.get("web_queries") or [])
+        financial_queries = list(cache.get("financial_queries") or [])
+        if refresh_structure:
+            web_queries = []
+            financial_queries = []
+
+        query_tasks: Dict[str, asyncio.Task[Any]] = {}
+        if not web_queries:
+            query_tasks["web"] = asyncio.create_task(
+                self.generate_web_queries(company_name, report_structure, report_type=report_type)
+            )
+        if not financial_queries:
+            query_tasks["financial"] = asyncio.create_task(
+                self.generate_financial_queries(company_name, ticker, report_structure)
+            )
+
+        if query_tasks:
+            ensure_not_cancelled()
+            update_progress("🔍💹 Generating research queries for web and financial data...")
+            if len(query_tasks) == 2:
+                web_queries, financial_queries = await asyncio.gather(
+                    query_tasks["web"], query_tasks["financial"]
+                )
+            elif "web" in query_tasks:
+                web_queries = await query_tasks["web"]
+            else:
+                financial_queries = await query_tasks["financial"]
+
+        if web_queries and "web" in query_tasks:
+            update_progress("🌐 Generated web search queries", web_queries)
+            _cache(web_queries=web_queries)
+        elif web_queries:
+            update_progress("🌐 Using cached web search queries", web_queries)
+
+        if financial_queries and "financial" in query_tasks:
+            update_progress("💹 Generated financial data queries", financial_queries)
+            _cache(financial_queries=financial_queries)
+        elif financial_queries:
+            update_progress("💹 Using cached financial data queries", financial_queries)
+
+        web_results = list(cache.get("web_results") or [])
+        financial_results = list(cache.get("financial_results") or [])
+        if refresh_structure:
+            web_results = []
+            financial_results = []
+
+        gather_tasks: Dict[str, asyncio.Task[Any]] = {}
+        if not web_results:
+            gather_tasks["web"] = asyncio.create_task(
+                parallel_search(self.web_search_tool, web_queries or [])
+            )
+        if not financial_results:
+            gather_tasks["financial"] = asyncio.create_task(
+                run_financial_queries_parallel(self.financial_agent, financial_queries or [])
+            )
+
+        if gather_tasks:
+            ensure_not_cancelled()
+            update_progress("🔄 Gathering data from web and financial sources...")
+            if len(gather_tasks) == 2:
+                web_results, financial_results = await asyncio.gather(
+                    gather_tasks["web"], gather_tasks["financial"]
+                )
+            elif "web" in gather_tasks:
+                web_results = await gather_tasks["web"]
+            else:
+                financial_results = await gather_tasks["financial"]
+            update_progress("📥 Data gathering complete.")
+
+        if web_results and "web" in gather_tasks:
+            _cache(web_results=web_results)
+        elif web_results:
+            update_progress("📊 Using cached web research results")
+
+        if financial_results and "financial" in gather_tasks:
+            _cache(financial_results=financial_results)
+        elif financial_results:
+            update_progress("📊 Using cached financial research results")
+
+        context = str(cache.get("context") or "").strip()
+        if refresh_structure:
+            context = ""
+        if context and not gather_tasks and not query_tasks:
+            update_progress("📝 Using cached consolidated research context")
+        else:
+            ensure_not_cancelled()
+            update_progress("📝 Formatting and consolidating research data...")
+            context = self._format_context(web_results, financial_results, financial_queries or [])
+            _cache(context=context)
+
+        return (
+            company_name,
+            report_structure,
+            context,
+            web_results,
+            financial_results,
+            web_queries,
+            financial_queries,
+        )
+
     async def run(
         self,
         ticker: str,
@@ -1740,97 +1889,24 @@ Report excerpt:
                     validation_result.get("reason", "Instruction deemed irrelevant or unsafe."),
                 )
 
-        # --- Check Cache ---
-        cached_data = self.cache_manager.get_cached_data(ticker, report_type=report_type)
-        
-        if cached_data:
-            ensure_not_cancelled()
-            update_progress("✅ Found cached data. Skipping data gathering and using cached content.")
-            company_name = cached_data['company_name']
-            report_structure = cached_data['structure']
-
-            
-            # Use cached raw results if available
-            web_results = cached_data.get('web_results', [])
-            financial_results = cached_data.get('financial_results', [])
-            web_queries = cached_data.get('web_queries', [])
-            financial_queries = cached_data.get('financial_queries', [])
-            
-            update_progress("🏢 Using cached company name", company_name)
-            update_progress("📊 Using cached web and financial results")
-            if report_structure:
-                update_progress("✅ Report structure generated", report_structure)
-            if web_queries:
-                update_progress("🌐 Generated web search queries", web_queries)
-            if financial_queries:
-                update_progress("💹 Generated financial data queries", financial_queries)
-
-            context = self._format_context(web_results, financial_results, financial_queries)
-            if rewritten_instruction:
-                ensure_not_cancelled()
-                update_progress("🧭 Regenerating report structure using validated custom instruction...")
-                regenerated_structure = await self.generate_report_structure(
-                    company_name,
-                    rewritten_instruction,
-                    report_type=report_type,
-                )
-                if regenerated_structure:
-                    report_structure = regenerated_structure
-                    update_progress("✅ Custom report structure generated", report_structure)
-                else:
-                    update_progress("⚠️ Failed to regenerate structure. Using cached structure.")
-        else:
-            ensure_not_cancelled()
-            # 1. Get company name
-            company_name = self.financial_tools.get_company_name(ticker)
-            update_progress("🏢 Identified company", company_name)
-
-            # 2. Generate report structure
-            ensure_not_cancelled()
-            update_progress("🏗️ Generating report structure...")
-            report_structure = await self.generate_report_structure(
-                company_name,
-                rewritten_instruction,
-                report_type=report_type,
-            )
-            if not report_structure:
-                update_progress("❌ Failed to generate report structure. Aborting.")
-                return
-            update_progress("✅ Report structure generated", report_structure)
-
-            # 3. & 4. Generate sub-queries in parallel
-            ensure_not_cancelled()
-            update_progress("🔍💹 Generating research queries for web and financial data...")
-            web_queries_task = asyncio.create_task(
-                self.generate_web_queries(company_name, report_structure, report_type=report_type)
-            )
-            financial_queries_task = asyncio.create_task(self.generate_financial_queries(company_name, ticker, report_structure))
-            web_queries, financial_queries = await asyncio.gather(web_queries_task, financial_queries_task)
-
-            if web_queries:
-                update_progress("🌐 Generated web search queries", web_queries)
-            if financial_queries:
-                update_progress("💹 Generated financial data queries", financial_queries)
-
-            # 5. & 6. Run searches in parallel
-            ensure_not_cancelled()
-            update_progress("🔄 Gathering data from web and financial sources...")
-            web_results_task = asyncio.create_task(parallel_search(self.web_search_tool, web_queries or []))
-            financial_results_task = asyncio.create_task(run_financial_queries_parallel(self.financial_agent, financial_queries or []))
-            web_results, financial_results = await asyncio.gather(web_results_task, financial_results_task)
-            update_progress("📥 Data gathering complete.")
-
-            # 7. Format context
-            ensure_not_cancelled()
-            update_progress("📝 Formatting and consolidating research data...")
-            context = self._format_context(web_results, financial_results, financial_queries or [])
-            
-            # --- Store in Cache ---
-            self.cache_manager.set_cached_data(
-                ticker, company_name, report_structure, context,
-                web_results, financial_results, web_queries, financial_queries,
-                report_type=report_type,
-            )
+        plan = await self._prepare_research_plan(
+            ticker=ticker,
+            report_type=report_type,
+            rewritten_instruction=rewritten_instruction,
+            update_progress=update_progress,
+            ensure_not_cancelled=ensure_not_cancelled,
+        )
+        if plan is None:
+            return
+        (
+            company_name,
+            report_structure,
+            context,
+            web_results,
+            financial_results,
+            web_queries,
+            financial_queries,
+        ) = plan
 
         # 8. Generate content for each section
         ensure_not_cancelled()
@@ -2092,77 +2168,24 @@ Report excerpt:
                     validation_result.get("reason", "Instruction deemed irrelevant or unsafe."),
                 )
 
-        # --- Check Cache ---
-        cached_data = self.cache_manager.get_cached_data(ticker)
-        
-        if cached_data:
-            update_progress("✅ Found cached data. Skipping data gathering and using cached content.")
-            company_name = cached_data['company_name']
-            report_structure = cached_data['structure']
-            context = cached_data['context']
-            
-            # Use cached raw results if available
-            web_results = cached_data.get('web_results', [])
-            financial_results = cached_data.get('financial_results', [])
-            web_queries = cached_data.get('web_queries', [])
-            financial_queries = cached_data.get('financial_queries', [])
-            
-            update_progress("🏢 Using cached company name", company_name)
-            update_progress("📊 Using cached web and financial results")
-            if report_structure:
-                update_progress("✅ Report structure generated", report_structure)
-            if web_queries:
-                update_progress("🌐 Generated web search queries", web_queries)
-            if financial_queries:
-                update_progress("💹 Generated financial data queries", financial_queries)
-            if rewritten_instruction:
-                update_progress("🧭 Regenerating report structure using validated custom instruction...")
-                regenerated_structure = await self.generate_report_structure(company_name, rewritten_instruction)
-                if regenerated_structure:
-                    report_structure = regenerated_structure
-                    update_progress("✅ Custom report structure generated", report_structure)
-                else:
-                    update_progress("⚠️ Failed to regenerate structure. Using cached structure.")
-        else:
-            # 1. Get company name
-            company_name = self.financial_tools.get_company_name(ticker)
-            update_progress("🏢 Identified company", company_name)
-
-            # 2. Generate report structure
-            update_progress("🏗️ Generating comprehensive report structure...")
-            report_structure = await self.generate_report_structure(company_name, rewritten_instruction)
-            if not report_structure:
-                update_progress("❌ Failed to generate report structure. Aborting.")
-                return
-            update_progress("✅ Report structure generated", report_structure)
-
-            # 3. & 4. Generate sub-queries in parallel
-            update_progress("🔍💹 Generating research queries for web and financial data...")
-            web_queries_task = asyncio.create_task(self.generate_web_queries(company_name, report_structure))
-            financial_queries_task = asyncio.create_task(self.generate_financial_queries(company_name, ticker, report_structure))
-            web_queries, financial_queries = await asyncio.gather(web_queries_task, financial_queries_task)
-
-            if web_queries:
-                update_progress("🌐 Generated web search queries", web_queries)
-            if financial_queries:
-                update_progress("💹 Generated financial data queries", financial_queries)
-
-            # 5. & 6. Run searches in parallel
-            update_progress("🔄 Gathering comprehensive data from web and financial sources...")
-            web_results_task = asyncio.create_task(parallel_search(self.web_search_tool, web_queries or []))
-            financial_results_task = asyncio.create_task(run_financial_queries_parallel(self.financial_agent, financial_queries or []))
-            web_results, financial_results = await asyncio.gather(web_results_task, financial_results_task)
-            update_progress("📥 Data gathering complete.")
-
-            # 7. Format context
-            update_progress("📝 Formatting and consolidating research data...")
-            context = self._format_context(web_results, financial_results, financial_queries or [])
-            
-            # --- Store in Cache ---
-            self.cache_manager.set_cached_data(
-                ticker, company_name, report_structure, context,
-                web_results, financial_results, web_queries, financial_queries
-            )
+        plan = await self._prepare_research_plan(
+            ticker=ticker,
+            report_type="investment",
+            rewritten_instruction=rewritten_instruction,
+            update_progress=update_progress,
+            ensure_not_cancelled=lambda: None,
+        )
+        if plan is None:
+            return
+        (
+            company_name,
+            report_structure,
+            context,
+            web_results,
+            financial_results,
+            web_queries,
+            financial_queries,
+        ) = plan
 
         # 8. Generate content for each section with content-awareness
         update_progress("✍️ Generating content-aware sections with enhanced formatting...")

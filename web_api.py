@@ -254,7 +254,7 @@ def _job_worker(job: JobState) -> None:
         if isinstance(data, list):
             lowered_msg = message.lower()
             # Report structure
-            if "report structure" in lowered_msg or "storyline outline" in lowered_msg:
+            if "report structure" in lowered_msg or "report outline" in lowered_msg or "storyline outline" in lowered_msg:
                 job.generated_data["structure"] = [str(item) for item in data]
             # Web queries
             elif "web search queries" in lowered_msg or "web queries" in lowered_msg:

@@ -28,18 +28,18 @@ export function ResearchPanels({ job }: Props) {
   const financialQueries = job?.generated_data.financial_queries?.map((entry) => `${entry.query} (${entry.ticker})`);
   const hasInvestmentBrief = Boolean(job?.opening_section_preview?.trim());
   const [sectionsOpen, setSectionsOpen] = useState({
-    storyline: true,
+    outline: true,
     market: true,
     financial: true,
   });
 
   useEffect(() => {
     if (hasInvestmentBrief) {
-      setSectionsOpen({ storyline: false, market: false, financial: false });
+      setSectionsOpen({ outline: false, market: false, financial: false });
     }
   }, [hasInvestmentBrief]);
 
-  function toggleSection(section: "storyline" | "market" | "financial") {
+  function toggleSection(section: "outline" | "market" | "financial") {
     setSectionsOpen((prev) => ({ ...prev, [section]: !prev[section] }));
   }
 
@@ -47,18 +47,18 @@ export function ResearchPanels({ job }: Props) {
     <Card>
       <CardHeader>
         <CardTitle>Research Intelligence</CardTitle>
-        <CardDescription>Storyline, market focus, and financial evidence plan.</CardDescription>
+        <CardDescription>Report outline, market focus, and financial evidence plan.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <section className="space-y-2">
           <button
             type="button"
             className="w-full text-left text-sm font-semibold text-slate-800"
-            onClick={() => toggleSection("storyline")}
+            onClick={() => toggleSection("outline")}
           >
-            Storyline Outline {sectionsOpen.storyline ? "▾" : "▸"}
+            Report Outline {sectionsOpen.outline ? "▾" : "▸"}
           </button>
-          {sectionsOpen.storyline ? renderList(structure) : null}
+          {sectionsOpen.outline ? renderList(structure) : null}
         </section>
         <Separator />
         <section className="space-y-2">

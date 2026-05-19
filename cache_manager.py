@@ -143,6 +143,52 @@ class RedisCacheManager:
         self.client.set(cache_key, json.dumps(data_to_cache, default=str), ex=self.ttl)
         logger.info("Cached comprehensive data for ticker: %s report_type: %s", ticker, normalized_type)
 
+    def merge_cached_data(
+        self,
+        ticker: str,
+        report_type: Optional[str] = None,
+        *,
+        company_name: Optional[str] = None,
+        structure: Optional[List[str]] = None,
+        context: Optional[str] = None,
+        web_results: Optional[List[Any]] = None,
+        financial_results: Optional[List[Any]] = None,
+        web_queries: Optional[List[str]] = None,
+        financial_queries: Optional[List[Dict[str, str]]] = None,
+    ) -> None:
+        """Merge partial updates into the cached report payload (write-after-each-step)."""
+        if not self.client:
+            return
+
+        normalized_type = self._normalize_report_type(report_type)
+        existing = self.get_cached_data(ticker, report_type=report_type) or {}
+        merged: Dict[str, Any] = {
+            "report_type": normalized_type,
+            "company_name": existing.get("company_name", ""),
+            "structure": existing.get("structure", []),
+            "context": existing.get("context", ""),
+            "web_results": existing.get("web_results", []),
+            "financial_results": existing.get("financial_results", []),
+            "web_queries": existing.get("web_queries", []),
+            "financial_queries": existing.get("financial_queries", []),
+        }
+        updates = {
+            "company_name": company_name,
+            "structure": structure,
+            "context": context,
+            "web_results": web_results,
+            "financial_results": financial_results,
+            "web_queries": web_queries,
+            "financial_queries": financial_queries,
+        }
+        for key, value in updates.items():
+            if value is not None:
+                merged[key] = value
+
+        cache_key = self._cache_key(ticker, normalized_type)
+        self.client.set(cache_key, json.dumps(merged, default=str), ex=self.ttl)
+        logger.info("Merged cache update for ticker: %s report_type: %s", ticker, normalized_type)
+
     def clear_all_cached_reports(self) -> int:
         """
         Clears all cached report data (all keys matching agentinvest:report:*).
