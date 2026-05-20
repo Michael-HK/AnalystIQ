@@ -119,6 +119,63 @@ Report Sections: {report_structure}
 Search Queries:
 """)
 
+GENERATE_CREDIT_RATING_WORKSPACE_QUERIES_PROMPT = PromptTemplate("""
+You are an AI credit research assistant generating targeted web queries for a credit rating comparison workspace.
+Company: {company_name}
+Ticker: {ticker}
+Selected agencies: {agencies}
+Rating focus period: {period_label} ({start_year} to {end_year})
+Today's date is {current_date}.
+
+Goal:
+- Produce exactly 3 to 5 unique web queries that are highly likely to return similar credit-rating evidence from different public sources.
+- Prioritize agency rationale pages, outlook/action announcements, debt/refinancing commentary, and materially relevant ESG risk signals.
+- Focus on evidence published or clearly applicable to the rating focus period.
+
+Strict constraints:
+- Return a valid JSON array of strings only.
+- No duplicate or near-duplicate queries.
+- Keep each query concise, source-targeted, and credit-focused.
+- Do not include proprietary tools, paid terminals, or private datasets.
+""")
+
+GENERATE_CREDIT_RATING_WORKSPACE_SYNTHESIS_PROMPT = PromptTemplate("""
+You are an elite credit analyst preparing output for a Credit Rating Workspace UI.
+Company: {company_name}
+Ticker: {ticker}
+Selected agencies: {agencies}
+Rating focus period: {period_label} ({start_year} to {end_year})
+Today's date is {current_date}.
+
+Use ONLY the provided research context. Never invent facts.
+Every factual claim must include citations using [n] notation that maps to the provided sources.
+Prioritize rating actions, outlook commentary, and key drivers from the rating focus period.
+If period-specific evidence is limited, state uncertainty explicitly instead of using out-of-period data.
+
+Output requirements:
+- Return valid JSON only with this exact schema:
+{
+  "comparison_paragraphs": ["paragraph 1", "paragraph 2", ...],
+  "comparison_table_markdown": "markdown table string"
+}
+- comparison_paragraphs:
+  - 2 to 4 concise professional paragraphs.
+  - Combined total length must not exceed 250 words.
+  - Explain differences/similarities in rating signal, outlook direction, and key drivers.
+- comparison_table_markdown:
+  - A markdown table with first column named "Metric / Dimension".
+  - Include one column per selected agency (column headers must match agency names exactly).
+  - The FIRST row MUST be "Current Rating" (exact label). Populate each agency cell with the latest rating grade and outlook if available (e.g., "A- / Stable [2]").
+  - After Current Rating, add 3 to 8 additional comparison rows that YOU formulate from the evidence — do not use a fixed template.
+    Choose dimensions that best differentiate agencies for this issuer and period (e.g., rating action date, outlook rationale, leverage/liquidity signal, refinancing risk, ESG/governance flag, sector headwind) only when supported by context.
+  - Omit a dimension entirely if evidence is insufficient for all agencies; do not invent rows to fill a checklist.
+  - Do NOT include a Source Document row (citations are inline in cells).
+  - Keep table cells concise and citation-backed where facts are used.
+
+Research context:
+{context}
+""")
+
 # 3. Prompt to generate date-aware financial data sub-queries
 GENERATE_FINANCIAL_QUERIES_PROMPT = PromptTemplate("""
 You are an AI assistant generating API queries for financial data for a report on {company_name} (Ticker: {ticker}).

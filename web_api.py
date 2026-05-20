@@ -1,4 +1,5 @@
 import asyncio
+import html
 import json
 import os
 import re
@@ -22,6 +23,7 @@ from cache_manager import _create_redis_client
 from ppt_export import build_professional_pptx
 from report_viewer import build_report_viewer_html, load_report_markdown
 from tickers import TICKERS
+from utils import convert_report_to_pdf
 
 REPORT_TYPE_OPTIONS = {
     "Investment Report": "investment",
@@ -33,6 +35,7 @@ PRESENTATION_STYLES = [
     "Executive Dark",
     "Minimal Clean",
 ]
+CREDIT_RATING_AGENCIES = ["Moody's", "Fitch", "S&P", "MSCI ESG"]
 
 ARTIFACTS_DIR = Path(__file__).resolve().parent / "generated_reports"
 FRONTEND_DIST_DIR = Path(__file__).resolve().parent / "frontend" / "dist"
@@ -87,6 +90,46 @@ class ReportJobRequest(BaseModel):
     custom_instruction: Optional[str] = None
     pipeline: str = Field(default="v1", pattern="^(v1|v3)$")
     presentation_style: str = "Institutional Light"
+
+
+CREDIT_RATING_YEAR_SPAN = 15
+
+
+def _credit_year_options() -> Dict[str, Any]:
+    current_year = datetime.now().year
+    year_options = list(range(current_year, current_year - CREDIT_RATING_YEAR_SPAN, -1))
+    return {
+        "year_options": year_options,
+        "default_start_year": current_year,
+        "default_end_year": current_year,
+    }
+
+
+def _normalize_credit_year_range(
+    start_year: Optional[int], end_year: Optional[int]
+) -> tuple[int, int]:
+    current_year = datetime.now().year
+    min_year = current_year - CREDIT_RATING_YEAR_SPAN + 1
+    focus_start = int(start_year or current_year)
+    focus_end = int(end_year or focus_start)
+    focus_start = max(min_year, min(current_year, focus_start))
+    focus_end = max(min_year, min(current_year, focus_end))
+    if focus_end < focus_start:
+        focus_end = focus_start
+    return focus_start, focus_end
+
+
+def _credit_period_label(start_year: int, end_year: int) -> str:
+    if start_year == end_year:
+        return str(start_year)
+    return f"{start_year}-{end_year}"
+
+
+class CreditRatingJobRequest(BaseModel):
+    ticker: str
+    agencies: List[str] = Field(default_factory=lambda: CREDIT_RATING_AGENCIES[:3])
+    start_year: Optional[int] = None
+    end_year: Optional[int] = None
 
 
 class JobCancelResponse(BaseModel):
@@ -205,7 +248,99 @@ class JobStore:
         return [job.to_dict() for job in jobs]
 
 
+@dataclass
+class CreditRatingJobState:
+    job_id: str
+    ticker: str
+    agencies: List[str]
+    start_year: int = 0
+    end_year: int = 0
+    status: str = "queued"
+    phase: str = "queued"
+    progress: int = 0
+    created_at: str = field(default_factory=utc_iso)
+    started_at: Optional[str] = None
+    updated_at: str = field(default_factory=utc_iso)
+    completed_at: Optional[str] = None
+    error: Optional[str] = None
+    company_name: Optional[str] = None
+    logs: List[Dict[str, Any]] = field(default_factory=list)
+    events: List[Dict[str, Any]] = field(default_factory=list)
+    generated_data: Dict[str, Any] = field(default_factory=dict)
+    reference_links: Dict[str, Dict[str, str]] = field(default_factory=dict)
+    doc_path: Optional[str] = None
+    pdf_path: Optional[str] = None
+    stop_event: threading.Event = field(default_factory=threading.Event)
+    event_queue: "Queue[Dict[str, Any]]" = field(default_factory=Queue)
+    worker_thread: Optional[threading.Thread] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "job_id": self.job_id,
+            "ticker": self.ticker,
+            "agencies": self.agencies,
+            "start_year": self.start_year,
+            "end_year": self.end_year,
+            "period_label": _credit_period_label(self.start_year, self.end_year),
+            "status": self.status,
+            "phase": self.phase,
+            "progress": self.progress,
+            "created_at": self.created_at,
+            "started_at": self.started_at,
+            "updated_at": self.updated_at,
+            "completed_at": self.completed_at,
+            "error": self.error,
+            "company_name": self.company_name,
+            "generated_data": self.generated_data,
+            "reference_links": self.reference_links,
+            "artifacts": {
+                "doc_ready": bool(self.doc_path and os.path.exists(self.doc_path)),
+                "pdf_ready": bool(self.pdf_path and os.path.exists(self.pdf_path)),
+                "doc_path": self.doc_path,
+                "pdf_path": self.pdf_path,
+            },
+            "log_count": len(self.logs),
+        }
+
+
+class CreditRatingJobStore:
+    def __init__(self) -> None:
+        self._jobs: Dict[str, CreditRatingJobState] = {}
+        self._lock = threading.Lock()
+
+    def create(self, payload: CreditRatingJobRequest) -> CreditRatingJobState:
+        if payload.ticker not in TICKERS:
+            raise HTTPException(status_code=400, detail="Unsupported ticker symbol.")
+        agencies = [item for item in payload.agencies if item in CREDIT_RATING_AGENCIES]
+        if not agencies:
+            raise HTTPException(status_code=400, detail="At least one supported agency must be selected.")
+        start_year, end_year = _normalize_credit_year_range(payload.start_year, payload.end_year)
+        job = CreditRatingJobState(
+            job_id=str(uuid.uuid4()),
+            ticker=payload.ticker,
+            agencies=agencies,
+            start_year=start_year,
+            end_year=end_year,
+        )
+        with self._lock:
+            self._jobs[job.job_id] = job
+        return job
+
+    def get(self, job_id: str) -> CreditRatingJobState:
+        with self._lock:
+            if job_id not in self._jobs:
+                raise HTTPException(status_code=404, detail="Credit rating job not found.")
+            return self._jobs[job_id]
+
+    def list(self) -> List[Dict[str, Any]]:
+        with self._lock:
+            jobs = list(self._jobs.values())
+        jobs.sort(key=lambda item: item.created_at, reverse=True)
+        return [job.to_dict() for job in jobs]
+
+
 store = JobStore()
+credit_store = CreditRatingJobStore()
 router = APIRouter()
 app = FastAPI(title="AnalystIQ API", version="1.0.0")
 app.add_middleware(
@@ -227,6 +362,258 @@ def _append_event(job: JobState, event_type: str, payload: Dict[str, Any]) -> No
     job.events.append(event)
     job.event_queue.put(event)
     job.updated_at = utc_iso()
+
+
+def _append_credit_event(job: CreditRatingJobState, event_type: str, payload: Dict[str, Any]) -> None:
+    event = {
+        "id": len(job.events),
+        "type": event_type,
+        "timestamp": utc_iso(),
+        "payload": payload,
+    }
+    job.events.append(event)
+    job.event_queue.put(event)
+    job.updated_at = utc_iso()
+
+
+def _parse_markdown_table(table_markdown: str) -> Dict[str, Any]:
+    lines = [
+        line.strip()
+        for line in (table_markdown or "").splitlines()
+        if line.strip() and "|" in line
+    ]
+    if len(lines) < 2:
+        return {"headers": [], "rows": []}
+
+    def _parse_line(line: str) -> List[str]:
+        return [cell.strip() for cell in line.strip("|").split("|") if cell.strip()]
+
+    headers = _parse_line(lines[0])
+    rows: List[List[str]] = []
+    for line in lines[1:]:
+        if re.fullmatch(r"\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?", line):
+            continue
+        parsed = _parse_line(line)
+        if parsed:
+            rows.append(parsed)
+    return {"headers": headers, "rows": rows}
+
+
+def _render_export_citations(text: str, reference_links: Dict[str, Dict[str, str]]) -> str:
+    escaped = html.escape(text or "")
+
+    def _replace(match: re.Match[str]) -> str:
+        number = match.group(1)
+        source = reference_links.get(number)
+        if not source or not source.get("url"):
+            return f"[{number}]"
+        url = html.escape(source["url"], quote=True)
+        return f'<a href="{url}">[{number}]</a>'
+
+    with_links = re.sub(r"\[(\d+)\]", _replace, escaped)
+    return with_links.replace("\n", "<br/>")
+
+
+def _table_markdown_to_html(
+    table_markdown: str,
+    reference_links: Dict[str, Dict[str, str]],
+) -> str:
+    parsed = _parse_markdown_table(_strip_source_document_table_row(table_markdown))
+    if not parsed["headers"]:
+        return "<p>Matrix output unavailable.</p>"
+
+    header_html = "".join(
+        f'<th style="border:1px solid #cbd5e1;padding:8px;text-align:left;background:#f8fafc;">'
+        f"{html.escape(header)}</th>"
+        for header in parsed["headers"]
+    )
+    body_html = []
+    for row in parsed["rows"]:
+        if row and "source document" in str(row[0]).lower():
+            continue
+        cells = "".join(
+            (
+                '<td style="border:1px solid #cbd5e1;padding:8px;vertical-align:top;">'
+                f"{_render_export_citations(cell, reference_links)}</td>"
+            )
+            for cell in row
+        )
+        body_html.append(f"<tr>{cells}</tr>")
+
+    return (
+        '<table style="border-collapse:collapse;width:100%;margin-top:8px;font-size:11pt;">'
+        f"<thead><tr>{header_html}</tr></thead>"
+        f"<tbody>{''.join(body_html)}</tbody>"
+        "</table>"
+    )
+
+
+def _strip_source_document_table_row(table_markdown: str) -> str:
+    filtered_lines: List[str] = []
+    for line in (table_markdown or "").splitlines():
+        stripped = line.strip()
+        if "|" in stripped:
+            cells = [cell.strip() for cell in stripped.strip("|").split("|") if cell.strip()]
+            if cells and "source document" in cells[0].lower():
+                continue
+        filtered_lines.append(line)
+    return "\n".join(filtered_lines).strip()
+
+
+def _write_credit_workspace_artifacts(job: CreditRatingJobState) -> None:
+    paragraphs = job.generated_data.get("comparison_paragraphs", [])
+    table_markdown = _strip_source_document_table_row(job.generated_data.get("comparison_table_markdown", ""))
+    if not paragraphs and not table_markdown:
+        return
+
+    os.makedirs(ARTIFACTS_DIR, exist_ok=True)
+    period_suffix = (
+        f"_{job.start_year}"
+        if job.start_year == job.end_year
+        else f"_{job.start_year}_{job.end_year}"
+    )
+    doc_path = ARTIFACTS_DIR / f"{job.ticker}_CreditRatingWorkspace{period_suffix}.doc"
+    pdf_path = ARTIFACTS_DIR / f"{job.ticker}_CreditRatingWorkspace{period_suffix}.pdf"
+    company_name = job.company_name or job.ticker
+
+    period_label = _credit_period_label(job.start_year, job.end_year)
+    markdown_text = _build_credit_workspace_markdown(
+        company_name=company_name,
+        ticker=job.ticker,
+        period_label=period_label,
+        paragraphs=paragraphs,
+        table_markdown=table_markdown,
+        reference_links=job.reference_links,
+    )
+
+    with open(doc_path, "w", encoding="utf-8") as file:
+        file.write(
+            _build_credit_workspace_doc_html(
+                company_name=company_name,
+                ticker=job.ticker,
+                period_label=period_label,
+                paragraphs=paragraphs,
+                table_markdown=table_markdown,
+                reference_links=job.reference_links,
+            )
+        )
+    job.doc_path = str(doc_path)
+
+    try:
+        pdf_success = asyncio.run(
+            convert_report_to_pdf(
+                markdown_text,
+                str(pdf_path),
+                company_name=company_name,
+                report_title="Credit Rating Workspace Brief",
+            )
+        )
+        if pdf_success and os.path.exists(pdf_path):
+            job.pdf_path = str(pdf_path)
+    except Exception:
+        # Word export remains available even when PDF conversion fails.
+        pass
+
+
+def _build_credit_reference_links(cited_sources: Dict[str, Dict[str, str]]) -> Dict[str, Dict[str, str]]:
+    links: Dict[str, Dict[str, str]] = {}
+    for key, source in cited_sources.items():
+        url = str((source or {}).get("url", "")).strip()
+        if not url:
+            continue
+        title = str((source or {}).get("title", "")).strip() or url
+        parsed = urllib.parse.urlparse(url)
+        domain = parsed.netloc.removeprefix("www.")
+        links[str(key)] = {
+            "url": url,
+            "title": title,
+            "domain": domain,
+        }
+    return links
+
+
+def _build_credit_workspace_markdown(
+    *,
+    company_name: str,
+    ticker: str,
+    period_label: str,
+    paragraphs: List[str],
+    table_markdown: str,
+    reference_links: Dict[str, Dict[str, str]],
+) -> str:
+    lines: List[str] = [
+        f"# Credit Rating Workspace Brief - {company_name} ({ticker})",
+        f"**Rating focus period:** {period_label}",
+        "",
+        "## Comparison Narrative",
+        "",
+    ]
+    if paragraphs:
+        lines.extend(paragraphs)
+        lines.append("")
+    else:
+        lines.extend(["Narrative was unavailable.", ""])
+
+    lines.extend(["## Comparison Matrix", ""])
+    lines.append(table_markdown.strip() if table_markdown.strip() else "_Matrix output unavailable._")
+    lines.append("")
+
+    if reference_links:
+        lines.extend(["## References", ""])
+        for key in sorted(reference_links.keys(), key=lambda item: int(item) if str(item).isdigit() else 10**9):
+            source = reference_links[key]
+            url = source.get("url", "")
+            title = source.get("title", "") or url
+            lines.append(f"**[{key}]** ({title}) [link]({url})")
+        lines.append("")
+    return "\n".join(lines).strip() + "\n"
+
+
+def _build_credit_workspace_doc_html(
+    *,
+    company_name: str,
+    ticker: str,
+    period_label: str,
+    paragraphs: List[str],
+    table_markdown: str,
+    reference_links: Dict[str, Dict[str, str]],
+) -> str:
+    paragraph_html = "".join(
+        f"<p style='margin:0 0 10px 0;line-height:1.5;'>{_render_export_citations(paragraph, reference_links)}</p>"
+        for paragraph in paragraphs
+        if paragraph.strip()
+    ) or "<p>Narrative was unavailable.</p>"
+
+    references_html = ""
+    if reference_links:
+        refs = []
+        for key in sorted(reference_links.keys(), key=lambda item: int(item) if str(item).isdigit() else 10**9):
+            source = reference_links[key]
+            url = html.escape(source.get("url", ""))
+            title = html.escape(source.get("title", "") or source.get("url", ""))
+            refs.append(f"<li><strong>[{key}]</strong> ({title}) <a href='{url}'>{url}</a></li>")
+        references_html = "<h2>References</h2><ul>" + "".join(refs) + "</ul>"
+
+    table_html = _table_markdown_to_html(table_markdown, reference_links)
+    return (
+        "<html xmlns:o='urn:schemas-microsoft-com:office:office' "
+        "xmlns:w='urn:schemas-microsoft-com:office:word' "
+        "xmlns='http://www.w3.org/TR/REC-html40'>"
+        "<head><meta charset='utf-8'>"
+        "<style>"
+        "body{font-family:Calibri,Arial,sans-serif;font-size:11pt;color:#0f172a;}"
+        "h1{font-size:18pt;} h2{font-size:13pt;margin-top:18px;}"
+        "table{border-collapse:collapse;}"
+        "</style></head><body>"
+        f"<h1>Credit Rating Workspace Brief - {html.escape(company_name)} ({html.escape(ticker)})</h1>"
+        f"<p><strong>Rating focus period:</strong> {html.escape(period_label)}</p>"
+        "<h2>Comparison Narrative</h2>"
+        f"{paragraph_html}"
+        "<h2>Comparison Matrix</h2>"
+        f"{table_html}"
+        f"{references_html}"
+        "</body></html>"
+    )
 
 
 def _job_worker(job: JobState) -> None:
@@ -374,6 +761,94 @@ def _job_worker(job: JobState) -> None:
         _append_event(job, "final", {"status": job.status})
 
 
+def _credit_job_worker(job: CreditRatingJobState) -> None:
+    job.status = "running"
+    job.phase = "initializing"
+    job.started_at = utc_iso()
+    _append_credit_event(job, "status", {"message": "Credit rating job started."})
+    agent = AnalystIQ()
+
+    def progress_callback(update: Any) -> None:
+        if not isinstance(update, dict):
+            return
+        message = str(update.get("message", "")).strip() or "Status update"
+        data = update.get("data")
+        phase = infer_phase(message)
+        job.phase = phase
+        job.progress = min(95, job.progress + 4)
+        log_entry = {
+            "timestamp": utc_iso(),
+            "phase": phase,
+            "message": message,
+            "data": data,
+        }
+        job.logs.append(log_entry)
+        lowered_message = message.lower()
+        if isinstance(data, str) and (
+            "identified company" in lowered_message or "company name" in lowered_message
+        ):
+            job.company_name = data
+        if isinstance(data, list) and ("web search queries" in lowered_message or "queries" in lowered_message):
+            job.generated_data["web_queries"] = [str(item) for item in data]
+        _append_credit_event(job, "progress", log_entry)
+
+    try:
+        result = asyncio.run(
+            agent.run_credit_rating_workspace(
+                ticker=job.ticker,
+                agencies=job.agencies,
+                start_year=job.start_year,
+                end_year=job.end_year,
+                progress_callback=progress_callback,
+                stop_event=job.stop_event,
+            )
+        )
+        if job.stop_event.is_set():
+            job.status = "cancelled"
+            job.phase = "cancelled"
+            _append_credit_event(job, "status", {"message": "Credit rating job cancelled by user."})
+        elif result:
+            job.company_name = result.get("company_name") or job.company_name
+            job.generated_data = {
+                "agencies": result.get("agencies", job.agencies),
+                "web_queries": result.get("web_queries", []),
+                "comparison_paragraphs": result.get("comparison_paragraphs", []),
+                "comparison_table_markdown": result.get("comparison_table_markdown", ""),
+            }
+            job.reference_links = _build_credit_reference_links(result.get("cited_source_map", {}))
+            job.generated_data["comparison_table_markdown"] = _strip_source_document_table_row(
+                job.generated_data.get("comparison_table_markdown", "")
+            )
+            _write_credit_workspace_artifacts(job)
+            if job.doc_path:
+                _append_credit_event(job, "artifact", {"type": "doc", "path": job.doc_path})
+            if job.pdf_path:
+                _append_credit_event(job, "artifact", {"type": "pdf", "path": job.pdf_path})
+            job.status = "completed"
+            job.phase = "completed"
+            job.progress = 100
+            _append_credit_event(job, "status", {"message": "Credit rating workspace generation completed."})
+        else:
+            job.status = "failed"
+            job.phase = "error"
+            job.error = "Agent returned no credit workspace content."
+            _append_credit_event(job, "error", {"message": job.error})
+    except asyncio.CancelledError:
+        job.status = "cancelled"
+        job.phase = "cancelled"
+        job.error = "Credit rating workspace generation cancelled by user."
+        _append_credit_event(job, "status", {"message": job.error})
+    except Exception as exc:  # pragma: no cover
+        job.status = "failed"
+        job.phase = "error"
+        job.error = str(exc)
+        _append_credit_event(job, "error", {"message": job.error})
+    finally:
+        job.completed_at = utc_iso()
+        job.updated_at = utc_iso()
+        _append_credit_event(job, "final", {"status": job.status})
+
+
 def _sse_encode(event: Dict[str, Any]) -> str:
     return f"id: {event['id']}\nevent: {event['type']}\ndata: {json.dumps(event)}\n\n"
 
@@ -398,6 +873,92 @@ def report_options() -> Dict[str, Any]:
         "report_type_options": REPORT_TYPE_OPTIONS,
         "presentation_styles": PRESENTATION_STYLES,
     }
+
+
+@router.get("/credit-rating/options")
+def credit_rating_options() -> Dict[str, Any]:
+    return {
+        "tickers": TICKERS,
+        "agencies": CREDIT_RATING_AGENCIES,
+        **_credit_year_options(),
+    }
+
+
+@router.get("/credit-rating/jobs")
+def list_credit_jobs() -> List[Dict[str, Any]]:
+    return credit_store.list()
+
+
+@router.post("/credit-rating/jobs")
+def create_credit_job(payload: CreditRatingJobRequest) -> Dict[str, Any]:
+    job = credit_store.create(payload)
+    worker = threading.Thread(target=_credit_job_worker, args=(job,), daemon=True)
+    job.worker_thread = worker
+    worker.start()
+    return job.to_dict()
+
+
+@router.get("/credit-rating/jobs/{job_id}")
+def get_credit_job(job_id: str) -> Dict[str, Any]:
+    return credit_store.get(job_id).to_dict()
+
+
+@router.get("/credit-rating/jobs/{job_id}/events")
+async def stream_credit_job_events(job_id: str, request: Request, from_event_id: int = 0) -> StreamingResponse:
+    job = credit_store.get(job_id)
+    last_event_id_header = request.headers.get("last-event-id")
+    if last_event_id_header is not None:
+        try:
+            from_event_id = max(from_event_id, int(last_event_id_header) + 1)
+        except ValueError:
+            pass
+
+    async def _generator():
+        for event in job.events:
+            if event["id"] >= from_event_id:
+                yield _sse_encode(event)
+        while True:
+            if job.status in ("completed", "failed", "cancelled") and job.event_queue.empty():
+                break
+            try:
+                event = job.event_queue.get_nowait()
+                if event["id"] >= from_event_id:
+                    yield _sse_encode(event)
+            except Empty:
+                await asyncio.sleep(0.5)
+
+    return StreamingResponse(_generator(), media_type="text/event-stream")
+
+
+@router.post("/credit-rating/jobs/{job_id}/cancel", response_model=JobCancelResponse)
+def cancel_credit_job(job_id: str) -> JobCancelResponse:
+    job = credit_store.get(job_id)
+    if job.status not in ("running", "queued"):
+        return JobCancelResponse(job_id=job_id, status=job.status)
+    job.stop_event.set()
+    return JobCancelResponse(job_id=job_id, status="cancelling")
+
+
+@router.get("/credit-rating/jobs/{job_id}/artifacts/{artifact_type}")
+def download_credit_artifact(job_id: str, artifact_type: str) -> FileResponse:
+    job = credit_store.get(job_id)
+    if artifact_type not in ("doc", "pdf"):
+        raise HTTPException(status_code=404, detail="Unsupported artifact type.")
+    if job.status != "completed":
+        raise HTTPException(status_code=400, detail="Export is available after generation completes.")
+    _write_credit_workspace_artifacts(job)
+    path_lookup = {
+        "doc": job.doc_path,
+        "pdf": job.pdf_path,
+    }
+    file_path = path_lookup[artifact_type]
+    if not file_path or not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Artifact not found.")
+    media_types = {
+        "doc": "application/msword",
+        "pdf": "application/pdf",
+    }
+    return FileResponse(file_path, media_type=media_types[artifact_type], filename=os.path.basename(file_path))
 
 
 @router.get("/reports/jobs")

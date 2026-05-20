@@ -1,4 +1,5 @@
 import type { ReportJob, ReportLog, ReportOptions, ReportType } from "@/types/report";
+import type { CreditRatingJob, CreditRatingLog, CreditRatingOptions } from "@/types/credit-rating";
 
 const API_BASE = import.meta.env.VITE_ANALYSTIQ_API_BASE ?? "/api";
 
@@ -85,4 +86,68 @@ export function artifactUrl(jobId: string, artifactType: "md" | "pdf" | "pptx") 
 
 export function viewerUrl(jobId: string) {
   return `${API_BASE}/reports/jobs/${jobId}/viewer`;
+}
+
+interface CreateCreditRatingJobInput {
+  ticker: string;
+  agencies: string[];
+  startYear: number;
+  endYear: number;
+}
+
+export async function getCreditRatingOptions(): Promise<CreditRatingOptions> {
+  const res = await fetch(`${API_BASE}/credit-rating/options`);
+  return readJson<CreditRatingOptions>(res);
+}
+
+export async function createCreditRatingJob(input: CreateCreditRatingJobInput): Promise<CreditRatingJob> {
+  const res = await fetch(`${API_BASE}/credit-rating/jobs`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      ticker: input.ticker,
+      agencies: input.agencies,
+      start_year: input.startYear,
+      end_year: input.endYear,
+    }),
+  });
+  return readJson<CreditRatingJob>(res);
+}
+
+export async function getCreditRatingJob(jobId: string): Promise<CreditRatingJob> {
+  const res = await fetch(`${API_BASE}/credit-rating/jobs/${jobId}`);
+  return readJson<CreditRatingJob>(res);
+}
+
+export async function cancelCreditRatingJob(jobId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/credit-rating/jobs/${jobId}/cancel`, {
+    method: "POST",
+  });
+  await readJson(res);
+}
+
+export function subscribeToCreditRatingJobEvents(
+  jobId: string,
+  onLog: (log: CreditRatingLog) => void,
+  onError?: (error: Error) => void
+): () => void {
+  const source = new EventSource(`${API_BASE}/credit-rating/jobs/${jobId}/events`);
+  source.addEventListener("progress", (evt) => {
+    try {
+      const parsed = JSON.parse((evt as MessageEvent).data) as { payload: CreditRatingLog };
+      onLog(parsed.payload);
+    } catch (error) {
+      if (onError) onError(error as Error);
+    }
+  });
+  source.addEventListener("error", () => {
+    if (source.readyState === EventSource.CLOSED && onError) {
+      onError(new Error("Live stream disconnected."));
+    }
+  });
+  return () => source.close();
+}
+
+export function creditRatingArtifactUrl(jobId: string, artifactType: "doc" | "pdf") {
+  return `${API_BASE}/credit-rating/jobs/${jobId}/artifacts/${artifactType}`;
 }

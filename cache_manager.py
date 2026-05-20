@@ -83,6 +83,115 @@ class RedisCacheManager:
         normalized_type = self._normalize_report_type(report_type)
         return f"agentinvest:report:{normalized_type}:{ticker}"
 
+    @staticmethod
+    def _credit_agencies_slug(agencies: Optional[List[str]]) -> str:
+        if not agencies:
+            return "default"
+        parts = []
+        for agency in sorted(agencies):
+            slug = (
+                str(agency)
+                .strip()
+                .lower()
+                .replace("'", "")
+                .replace("&", "and")
+                .replace(" ", "_")
+            )
+            if slug:
+                parts.append(slug)
+        return "_".join(parts) if parts else "default"
+
+    def _credit_cache_key(
+        self,
+        ticker: str,
+        agencies: Optional[List[str]] = None,
+        start_year: Optional[int] = None,
+        end_year: Optional[int] = None,
+    ) -> str:
+        period_slug = "latest"
+        if start_year is not None and end_year is not None:
+            period_slug = f"{start_year}_{end_year}"
+        return f"agentinvest:credit_rating:{ticker}:{self._credit_agencies_slug(agencies)}:{period_slug}"
+
+    def get_credit_rating_cached_data(
+        self,
+        ticker: str,
+        agencies: Optional[List[str]] = None,
+        start_year: Optional[int] = None,
+        end_year: Optional[int] = None,
+    ) -> Optional[Dict[str, Any]]:
+        if not self.client:
+            return None
+
+        cache_key = self._credit_cache_key(ticker, agencies, start_year, end_year)
+        cached_value = self.client.get(cache_key)
+        if cached_value:
+            logger.info("Credit rating cache hit for ticker: %s", ticker)
+            return json.loads(cached_value)
+
+        logger.info("Credit rating cache miss for ticker: %s", ticker)
+        return None
+
+    def merge_credit_rating_cached_data(
+        self,
+        ticker: str,
+        agencies: Optional[List[str]] = None,
+        start_year: Optional[int] = None,
+        end_year: Optional[int] = None,
+        *,
+        company_name: Optional[str] = None,
+        web_queries: Optional[List[str]] = None,
+        web_results: Optional[List[Any]] = None,
+        context: Optional[str] = None,
+        source_map: Optional[Dict[str, Any]] = None,
+        comparison_paragraphs: Optional[List[str]] = None,
+        comparison_table_markdown: Optional[str] = None,
+        cited_source_map: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        if not self.client:
+            return
+
+        existing = self.get_credit_rating_cached_data(ticker, agencies, start_year, end_year) or {}
+        merged: Dict[str, Any] = {
+            "ticker": ticker,
+            "agencies": existing.get("agencies", agencies or []),
+            "start_year": existing.get("start_year", start_year),
+            "end_year": existing.get("end_year", end_year),
+            "company_name": existing.get("company_name", ""),
+            "web_queries": existing.get("web_queries", []),
+            "web_results": existing.get("web_results", []),
+            "context": existing.get("context", ""),
+            "source_map": existing.get("source_map", {}),
+            "comparison_paragraphs": existing.get("comparison_paragraphs", []),
+            "comparison_table_markdown": existing.get("comparison_table_markdown", ""),
+            "cited_source_map": existing.get("cited_source_map", {}),
+        }
+        updates = {
+            "agencies": agencies,
+            "start_year": start_year,
+            "end_year": end_year,
+            "company_name": company_name,
+            "web_queries": web_queries,
+            "web_results": web_results,
+            "context": context,
+            "source_map": source_map,
+            "comparison_paragraphs": comparison_paragraphs,
+            "comparison_table_markdown": comparison_table_markdown,
+            "cited_source_map": cited_source_map,
+        }
+        for key, value in updates.items():
+            if value is not None:
+                merged[key] = value
+
+        cache_key = self._credit_cache_key(
+            ticker,
+            agencies or merged.get("agencies"),
+            merged.get("start_year"),
+            merged.get("end_year"),
+        )
+        self.client.set(cache_key, json.dumps(merged, default=str), ex=self.ttl)
+        logger.info("Merged credit rating cache update for ticker: %s", ticker)
+
     def get_cached_data(self, ticker: str, report_type: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
         Retrieves cached report structure and context for a given ticker.

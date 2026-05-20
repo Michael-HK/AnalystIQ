@@ -18,6 +18,8 @@ from prompts import (
     GENERATE_CREDIT_REPORT_STRUCTURE_PROMPT,
     GENERATE_WEB_QUERIES_PROMPT,
     GENERATE_CREDIT_WEB_QUERIES_PROMPT,
+    GENERATE_CREDIT_RATING_WORKSPACE_QUERIES_PROMPT,
+    GENERATE_CREDIT_RATING_WORKSPACE_SYNTHESIS_PROMPT,
     GENERATE_FINANCIAL_QUERIES_PROMPT,
     GENERATE_OPENING_SECTION_PROMPT,
     GENERATE_CREDIT_OPENING_SECTION_PROMPT,
@@ -431,6 +433,250 @@ Rules:
         )
         response = await self.llm.acomplete(prompt)
         return self._parse_llm_python_output(response.text)
+
+    def _normalize_credit_agencies(self, agencies: Optional[List[str]]) -> List[str]:
+        allowed_order = ["Moody's", "Fitch", "S&P", "MSCI ESG"]
+        alias_map = {
+            "moody": "Moody's",
+            "moodys": "Moody's",
+            "moody's": "Moody's",
+            "fitch": "Fitch",
+            "sp": "S&P",
+            "s&p": "S&P",
+            "standard & poor's": "S&P",
+            "standard and poor's": "S&P",
+            "msci": "MSCI ESG",
+            "msci esg": "MSCI ESG",
+        }
+        normalized: List[str] = []
+        seen = set()
+        for raw in agencies or []:
+            cleaned = str(raw or "").strip()
+            if not cleaned:
+                continue
+            mapped = alias_map.get(cleaned.lower(), cleaned)
+            if mapped in allowed_order and mapped not in seen:
+                normalized.append(mapped)
+                seen.add(mapped)
+        if not normalized:
+            return allowed_order[:3]
+        return [agency for agency in allowed_order if agency in seen]
+
+    @staticmethod
+    def _credit_period_label(start_year: int, end_year: int) -> str:
+        if start_year == end_year:
+            return str(start_year)
+        return f"{start_year}-{end_year}"
+
+    def _dedupe_and_limit_credit_queries(
+        self,
+        company_name: str,
+        ticker: str,
+        agencies: List[str],
+        queries: Any,
+        start_year: int,
+        end_year: int,
+    ) -> List[str]:
+        period_label = self._credit_period_label(start_year, end_year)
+        cleaned_queries: List[str] = []
+        seen = set()
+        for item in queries or []:
+            query = re.sub(r"\s+", " ", str(item or "").strip())
+            if not query:
+                continue
+            lowered = query.lower()
+            if lowered in seen:
+                continue
+            seen.add(lowered)
+            cleaned_queries.append(query)
+
+        fallback_queries: List[str] = []
+        for agency in agencies:
+            fallback_queries.extend(
+                [
+                    f"{company_name} {agency} credit rating outlook {period_label}",
+                    f"{company_name} {agency} rating action debt refinancing {period_label}",
+                ]
+            )
+        fallback_queries.append(f"{company_name} {ticker} credit outlook debt risk {period_label}")
+
+        for fallback in fallback_queries:
+            if len(cleaned_queries) >= 5:
+                break
+            lowered = fallback.lower()
+            if lowered in seen:
+                continue
+            seen.add(lowered)
+            cleaned_queries.append(fallback)
+
+        if len(cleaned_queries) < 3:
+            cleaned_queries.append(
+                f"{company_name} {ticker} rating action and outlook {period_label}"
+            )
+
+        return cleaned_queries[:5]
+
+    def _strip_credit_workspace_source_row(self, table_markdown: str) -> str:
+        """Remove Source Document rows; citations are inline in metric cells."""
+        filtered_lines: List[str] = []
+        for line in (table_markdown or "").splitlines():
+            stripped = line.strip()
+            if "|" in stripped:
+                cells = [cell.strip() for cell in stripped.strip("|").split("|") if cell.strip()]
+                if cells and "source document" in cells[0].lower():
+                    continue
+            filtered_lines.append(line)
+        return "\n".join(filtered_lines).strip()
+
+    @staticmethod
+    def _is_markdown_table_separator(line: str) -> bool:
+        stripped = line.strip()
+        return bool(re.match(r"^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?$", stripped))
+
+    @staticmethod
+    def _parse_markdown_table_row(line: str) -> List[str]:
+        return [cell.strip() for cell in line.strip().strip("|").split("|")]
+
+    def _enforce_current_rating_first_row(self, table_markdown: str, agencies: List[str]) -> str:
+        """Ensure comparison matrix leads with Current Rating; keep other rows LLM-selected."""
+        lines = [line for line in (table_markdown or "").splitlines() if line.strip()]
+        if not lines:
+            return table_markdown
+
+        table_lines = [line for line in lines if "|" in line]
+        if len(table_lines) < 2:
+            return table_markdown
+
+        header_cells = self._parse_markdown_table_row(table_lines[0])
+        separator_line = table_lines[1] if self._is_markdown_table_separator(table_lines[1]) else None
+        body_start = 2 if separator_line else 1
+        body_lines = table_lines[body_start:]
+
+        parsed_rows: List[List[str]] = []
+        current_rating_row: Optional[List[str]] = None
+        for line in body_lines:
+            if self._is_markdown_table_separator(line):
+                continue
+            cells = self._parse_markdown_table_row(line)
+            if not cells:
+                continue
+            metric_label = cells[0].strip()
+            if "source document" in metric_label.lower():
+                continue
+            if re.sub(r"[^a-z0-9 ]", "", metric_label.lower()).strip() == "current rating":
+                current_rating_row = cells
+                continue
+            parsed_rows.append(cells)
+
+        column_count = len(header_cells)
+        if current_rating_row is None:
+            placeholder_cells = ["Not available in context"] * max(column_count - 1, len(agencies))
+            current_rating_row = ["Current Rating", *placeholder_cells[: max(column_count - 1, 1)]]
+        elif current_rating_row[0].strip().lower() != "current rating":
+            current_rating_row[0] = "Current Rating"
+
+        while len(current_rating_row) < column_count:
+            current_rating_row.append("")
+        current_rating_row = current_rating_row[:column_count]
+
+        normalized_rows = [current_rating_row]
+        for row in parsed_rows:
+            padded = row[:]
+            while len(padded) < column_count:
+                padded.append("")
+            normalized_rows.append(padded[:column_count])
+
+        def _format_row(cells: List[str]) -> str:
+            return "| " + " | ".join(cells) + " |"
+
+        rebuilt = [_format_row(header_cells)]
+        if separator_line:
+            rebuilt.append(separator_line)
+        else:
+            rebuilt.append("| " + " | ".join(["---"] * column_count) + " |")
+        rebuilt.extend(_format_row(row) for row in normalized_rows)
+        return "\n".join(rebuilt).strip()
+
+    @retry(wait=wait_exponential(multiplier=1, min=2, max=60), stop=stop_after_attempt(3))
+    async def generate_credit_rating_workspace_queries(
+        self,
+        company_name: str,
+        ticker: str,
+        agencies: List[str],
+        start_year: int,
+        end_year: int,
+    ) -> List[str]:
+        period_label = self._credit_period_label(start_year, end_year)
+        prompt = GENERATE_CREDIT_RATING_WORKSPACE_QUERIES_PROMPT.format(
+            company_name=company_name,
+            ticker=ticker,
+            agencies=", ".join(agencies),
+            period_label=period_label,
+            start_year=start_year,
+            end_year=end_year,
+            current_date=self.current_date,
+        )
+        response = await self.llm.acomplete(prompt)
+        parsed = self._parse_llm_json_output(response.text)
+        if not isinstance(parsed, list):
+            parsed = self._parse_llm_python_output(response.text)
+        return self._dedupe_and_limit_credit_queries(
+            company_name, ticker, agencies, parsed, start_year, end_year
+        )
+
+    @retry(wait=wait_exponential(multiplier=1, min=2, max=60), stop=stop_after_attempt(3))
+    async def generate_credit_rating_workspace_output(
+        self,
+        company_name: str,
+        ticker: str,
+        agencies: List[str],
+        context: str,
+        start_year: int,
+        end_year: int,
+    ) -> Dict[str, Any]:
+        period_label = self._credit_period_label(start_year, end_year)
+        prompt = GENERATE_CREDIT_RATING_WORKSPACE_SYNTHESIS_PROMPT.format(
+            company_name=company_name,
+            ticker=ticker,
+            agencies=", ".join(agencies),
+            period_label=period_label,
+            start_year=start_year,
+            end_year=end_year,
+            current_date=self.current_date,
+            context=context,
+        )
+        response = await self.llm.acomplete(prompt)
+        parsed = self._parse_llm_json_output(response.text)
+        if not isinstance(parsed, dict):
+            parsed = self._parse_llm_python_output(response.text)
+            if not isinstance(parsed, dict):
+                parsed = {}
+
+        paragraphs = parsed.get("comparison_paragraphs")
+        table_markdown = str(parsed.get("comparison_table_markdown", "")).strip()
+        if not isinstance(paragraphs, list):
+            paragraphs = []
+        clean_paragraphs = [str(item).strip() for item in paragraphs if str(item).strip()]
+        bounded_paragraphs: List[str] = []
+        remaining_words = 250
+        for paragraph in clean_paragraphs[:4]:
+            if remaining_words <= 0:
+                break
+            words = paragraph.split()
+            if len(words) <= remaining_words:
+                bounded_paragraphs.append(paragraph)
+                remaining_words -= len(words)
+            else:
+                truncated = " ".join(words[:remaining_words]).strip()
+                if truncated:
+                    bounded_paragraphs.append(f"{truncated}...")
+                remaining_words = 0
+        cleaned_table = self._strip_credit_workspace_source_row(table_markdown)
+        cleaned_table = self._enforce_current_rating_first_row(cleaned_table, agencies)
+        return {
+            "comparison_paragraphs": bounded_paragraphs,
+            "comparison_table_markdown": cleaned_table,
+        }
 
     @retry(wait=wait_exponential(multiplier=1, min=2, max=60), stop=stop_after_attempt(3))
     async def generate_financial_queries(
@@ -2134,6 +2380,193 @@ Report excerpt:
             update_progress("❌ Failed to generate PDF report.")
         
         return final_report
+
+    def _restore_source_map_from_cache(self, cached_source_map: Any) -> None:
+        self.source_map.clear()
+        if not isinstance(cached_source_map, dict):
+            return
+        for key, value in cached_source_map.items():
+            if not isinstance(value, dict):
+                continue
+            try:
+                idx = int(key)
+            except (TypeError, ValueError):
+                continue
+            self.source_map[idx] = {
+                "url": str(value.get("url", "")),
+                "title": str(value.get("title", "")),
+            }
+
+    async def run_credit_rating_workspace(
+        self,
+        ticker: str,
+        agencies: Optional[List[str]] = None,
+        start_year: Optional[int] = None,
+        end_year: Optional[int] = None,
+        progress_callback: Optional[ProgressCallback] = None,
+        stop_event: Optional[Any] = None,
+    ) -> Dict[str, Any]:
+        def update_progress(message: str, data: Optional[Any] = None):
+            payload = {"message": message, "data": data}
+            if progress_callback:
+                progress_callback(payload)
+            print(f"{message}{(': ' + str(data)) if data else ''}")
+
+        def ensure_not_cancelled() -> None:
+            if stop_event is not None and stop_event.is_set():
+                raise asyncio.CancelledError("Credit rating workspace run cancelled by user.")
+
+        def _cache(**fields: Any) -> None:
+            self.cache_manager.merge_credit_rating_cached_data(
+                ticker,
+                selected_agencies,
+                focus_start_year,
+                focus_end_year,
+                **fields,
+            )
+
+        selected_agencies = self._normalize_credit_agencies(agencies)
+        current_year = datetime.now().year
+        focus_start_year = int(start_year or current_year)
+        focus_end_year = int(end_year or focus_start_year)
+        if focus_end_year < focus_start_year:
+            focus_end_year = focus_start_year
+        period_label = self._credit_period_label(focus_start_year, focus_end_year)
+
+        ensure_not_cancelled()
+        update_progress(f"🚀 Starting credit rating workspace analysis for {ticker}")
+        update_progress("🏛️ Selected agencies", selected_agencies)
+        update_progress("📅 Rating focus period", period_label)
+
+        cache = (
+            self.cache_manager.get_credit_rating_cached_data(
+                ticker, selected_agencies, focus_start_year, focus_end_year
+            )
+            or {}
+        )
+        cached_paragraphs = list(cache.get("comparison_paragraphs") or [])
+        cached_table = str(cache.get("comparison_table_markdown") or "").strip()
+        if cached_paragraphs or cached_table:
+            update_progress("📦 Using cached credit rating workspace synthesis")
+            company_name = str(cache.get("company_name") or self.financial_tools.get_company_name(ticker))
+            self._restore_source_map_from_cache(cache.get("source_map"))
+            cited_source_map = dict(cache.get("cited_source_map") or {})
+            return {
+                "ticker": ticker,
+                "company_name": company_name,
+                "agencies": selected_agencies,
+                "start_year": focus_start_year,
+                "end_year": focus_end_year,
+                "period_label": period_label,
+                "web_queries": list(cache.get("web_queries") or []),
+                "comparison_paragraphs": cached_paragraphs,
+                "comparison_table_markdown": cached_table,
+                "source_map": {
+                    str(idx): value for idx, value in self.source_map.items() if isinstance(value, dict)
+                },
+                "cited_source_map": cited_source_map,
+            }
+
+        company_name = str(cache.get("company_name") or "").strip()
+        if company_name:
+            update_progress("🏢 Using cached company name", company_name)
+        else:
+            company_name = self.financial_tools.get_company_name(ticker)
+            update_progress("🏢 Identified company", company_name)
+            _cache(company_name=company_name)
+
+        web_queries = list(cache.get("web_queries") or [])
+        if web_queries:
+            update_progress("🌐 Using cached web search queries", web_queries)
+        else:
+            ensure_not_cancelled()
+            update_progress("🔍 Generating unique web search queries...")
+            web_queries = await self.generate_credit_rating_workspace_queries(
+                company_name=company_name,
+                ticker=ticker,
+                agencies=selected_agencies,
+                start_year=focus_start_year,
+                end_year=focus_end_year,
+            )
+            update_progress("🌐 Generated web search queries", web_queries)
+            _cache(web_queries=web_queries)
+
+        cached_web_results = list(cache.get("web_results") or [])
+        if cached_web_results:
+            update_progress("📊 Using cached web research results")
+            context = self._format_context(cached_web_results, [], [])
+            source_map_payload = {
+                str(idx): value
+                for idx, value in self.source_map.items()
+                if isinstance(value, dict)
+            }
+            _cache(context=context, source_map=source_map_payload)
+        else:
+            ensure_not_cancelled()
+            update_progress("🔄 Gathering web evidence...")
+            web_results = await parallel_search(self.web_search_tool, web_queries)
+            update_progress("📥 Web evidence gathered.")
+
+            ensure_not_cancelled()
+            update_progress("📝 Consolidating evidence context...")
+            context = self._format_context(web_results, [], [])
+            source_map_payload = {
+                str(idx): value
+                for idx, value in self.source_map.items()
+                if isinstance(value, dict)
+            }
+            _cache(
+                web_results=web_results,
+                context=context,
+                source_map=source_map_payload,
+            )
+
+        ensure_not_cancelled()
+        update_progress("🧠 Generating agency comparison narrative and matrix...")
+        synthesis = await self.generate_credit_rating_workspace_output(
+            company_name=company_name,
+            ticker=ticker,
+            agencies=selected_agencies,
+            context=context,
+            start_year=focus_start_year,
+            end_year=focus_end_year,
+        )
+
+        combined_text = "\n\n".join(
+            synthesis.get("comparison_paragraphs", []) + [synthesis.get("comparison_table_markdown", "")]
+        )
+        cited_numbers = self._extract_cited_numbers(combined_text)
+        source_map_payload = {
+            str(idx): {"url": value.get("url", ""), "title": value.get("title", "")}
+            for idx, value in self.source_map.items()
+            if isinstance(value, dict)
+        }
+        cited_source_map = {
+            str(num): source_map_payload.get(str(num), {"url": "", "title": ""})
+            for num in cited_numbers
+        }
+        _cache(
+            comparison_paragraphs=synthesis.get("comparison_paragraphs", []),
+            comparison_table_markdown=synthesis.get("comparison_table_markdown", ""),
+            cited_source_map=cited_source_map,
+            source_map=source_map_payload,
+        )
+        update_progress("✅ Credit rating workspace synthesis complete.")
+
+        return {
+            "ticker": ticker,
+            "company_name": company_name,
+            "agencies": selected_agencies,
+            "start_year": focus_start_year,
+            "end_year": focus_end_year,
+            "period_label": period_label,
+            "web_queries": web_queries,
+            "comparison_paragraphs": synthesis.get("comparison_paragraphs", []),
+            "comparison_table_markdown": synthesis.get("comparison_table_markdown", ""),
+            "source_map": source_map_payload,
+            "cited_source_map": cited_source_map,
+        }
+
     async def run_v3(
         self,
         ticker: str,

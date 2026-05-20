@@ -1,8 +1,12 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import type { ReportLog } from "@/types/report";
+type TimelineLog = {
+  timestamp: string;
+  phase: string;
+  message: string;
+};
 
 interface Props {
-  logs: ReportLog[];
+  logs: TimelineLog[];
 }
 
 export function ActivityTimeline({ logs }: Props) {
