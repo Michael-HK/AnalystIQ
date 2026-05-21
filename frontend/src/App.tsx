@@ -7,10 +7,12 @@ import { SnapshotPanel } from "@/features/report-runner/snapshot-panel";
 import { StatusStrip } from "@/features/report-runner/status-strip";
 import { ReportViewerDialog } from "@/features/report-viewer/report-viewer-dialog";
 import { CreditRatingWorkspace } from "@/features/credit-rating/credit-rating-workspace";
+import { AnalystIQLandingPage } from "@/features/landing/analystiq-landing-page";
 import { cancelReportJob, createReportJob, generatePptx, getOptions, getReportJob, subscribeToJobEvents } from "@/lib/api";
 import type { ReportJob, ReportLog, ReportOptions, ReportType } from "@/types/report";
 
 function App() {
+  const [hasEnteredApp, setHasEnteredApp] = useState(false);
   const [workspace, setWorkspace] = useState<"report" | "credit-rating">("report");
   const [options, setOptions] = useState<ReportOptions | null>(null);
   const [ticker, setTicker] = useState<string>("");
@@ -25,6 +27,7 @@ function App() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!hasEnteredApp) return;
     getOptions()
       .then((data) => {
         setOptions(data);
@@ -32,7 +35,7 @@ function App() {
         setPresentationStyle(data.presentation_styles[0] ?? "Institutional Light");
       })
       .catch((err) => setError(err.message));
-  }, []);
+  }, [hasEnteredApp]);
 
   useEffect(() => {
     if (!job?.job_id) return;
@@ -88,7 +91,7 @@ function App() {
       return "EXPORT: Generating editable PowerPoint presentation from your completed report...";
     }
     if (!logs.length) {
-      return "AnalystIQ is researching market signals, validating financial context, and composing your report...";
+      return "Report IQ is researching market signals, validating financial context, and composing your report...";
     }
     const latest = logs[logs.length - 1];
     const cleanMessage = latest.message
@@ -96,7 +99,7 @@ function App() {
       .replace(/\s+/g, " ")
       .trim();
     if (!cleanMessage) {
-      return "AnalystIQ is processing your report.";
+      return "Report IQ is processing your report.";
     }
     const phaseLabel = latest.phase ? latest.phase.toUpperCase() : "STATUS";
     return `${phaseLabel}: ${cleanMessage}`;
@@ -143,10 +146,22 @@ function App() {
     }
   };
 
+  if (!hasEnteredApp) {
+    return <AnalystIQLandingPage onLogin={() => setHasEnteredApp(true)} />;
+  }
+
   return (
-    <main className="min-h-screen bg-gradient-to-b from-slate-50 via-slate-50 to-white px-4 py-6">
+    <main className="app-enter min-h-screen bg-gradient-to-b from-slate-50 via-slate-50 to-white px-4 py-6">
       <div className="mx-auto w-full max-w-[1700px] space-y-4">
         <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-panel">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-2">
+              <span className="rounded-md bg-slate-900 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-white">
+                AnalystIQ
+              </span>
+              <span className="text-sm text-slate-500">Workspace Hub</span>
+            </div>
+          </div>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
@@ -157,7 +172,7 @@ function App() {
                   : "border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
               }`}
             >
-              Report Workspace
+              Report IQ
             </button>
             <button
               type="button"
@@ -180,11 +195,11 @@ function App() {
             <section className="rounded-2xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-blue-50 p-6 shadow-panel">
               <div className="mb-4 flex items-center gap-3">
                 <span className="rounded-full border border-blue-200 bg-blue-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-blue-700">
-                  AnalystIQ
+                  Report IQ
                 </span>
                 <span className="text-sm font-medium text-slate-500">Institutional Research Workspace</span>
               </div>
-              <h2 className="text-3xl font-semibold tracking-tight text-slate-900">AnalystIQ Studio</h2>
+              <h2 className="text-3xl font-semibold tracking-tight text-slate-900">Report IQ Studio</h2>
               <p className="mt-4 max-w-4xl text-lg leading-8 text-slate-600">
                 Built for analyst teams to move from ticker selection to decision-ready materials across investment and credit workflows.
               </p>
