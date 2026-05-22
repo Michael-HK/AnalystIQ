@@ -115,7 +115,7 @@ export async function createCreditRatingJob(input: CreateCreditRatingJobInput): 
 }
 
 export async function getCreditRatingJob(jobId: string): Promise<CreditRatingJob> {
-  const res = await fetch(`${API_BASE}/credit-rating/jobs/${jobId}`);
+  const res = await fetch(`${API_BASE}/credit-rating/jobs/${jobId}`, { cache: "no-store" });
   return readJson<CreditRatingJob>(res);
 }
 
@@ -129,9 +129,18 @@ export async function cancelCreditRatingJob(jobId: string): Promise<void> {
 export function subscribeToCreditRatingJobEvents(
   jobId: string,
   onLog: (log: CreditRatingLog) => void,
-  onError?: (error: Error) => void
+  onError?: (error: Error) => void,
+  onJobUpdate?: (job: CreditRatingJob) => void
 ): () => void {
   const source = new EventSource(`${API_BASE}/credit-rating/jobs/${jobId}/events`);
+  const refreshJob = async () => {
+    if (!onJobUpdate) return;
+    try {
+      onJobUpdate(await getCreditRatingJob(jobId));
+    } catch (error) {
+      if (onError) onError(error as Error);
+    }
+  };
   source.addEventListener("progress", (evt) => {
     try {
       const parsed = JSON.parse((evt as MessageEvent).data) as { payload: CreditRatingLog };
@@ -139,6 +148,27 @@ export function subscribeToCreditRatingJobEvents(
     } catch (error) {
       if (onError) onError(error as Error);
     }
+  });
+  source.addEventListener("status", (evt) => {
+    try {
+      const parsed = JSON.parse((evt as MessageEvent).data) as {
+        payload?: { status?: string; generated_data?: CreditRatingJob["generated_data"] };
+      };
+      const payload = parsed.payload;
+      if (
+        payload?.status === "completed" ||
+        payload?.status === "failed" ||
+        payload?.generated_data?.comparison_paragraphs?.length ||
+        payload?.generated_data?.comparison_table_markdown
+      ) {
+        void refreshJob();
+      }
+    } catch (error) {
+      if (onError) onError(error as Error);
+    }
+  });
+  source.addEventListener("final", () => {
+    void refreshJob();
   });
   source.addEventListener("error", () => {
     if (source.readyState === EventSource.CLOSED && onError) {

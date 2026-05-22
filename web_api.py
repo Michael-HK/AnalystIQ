@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -761,6 +761,39 @@ def _job_worker(job: JobState) -> None:
         _append_event(job, "final", {"status": job.status})
 
 
+def _apply_credit_synthesis_payload(job: CreditRatingJobState, payload: Any) -> None:
+    if not isinstance(payload, dict):
+        return
+    paragraphs = payload.get("comparison_paragraphs")
+    table_markdown = payload.get("comparison_table_markdown")
+    if isinstance(paragraphs, list):
+        job.generated_data["comparison_paragraphs"] = [
+            str(item).strip() for item in paragraphs if str(item).strip()
+        ]
+    if isinstance(table_markdown, str):
+        job.generated_data["comparison_table_markdown"] = _strip_source_document_table_row(
+            table_markdown
+        )
+
+
+def _credit_job_snapshot(job: CreditRatingJobState) -> Dict[str, Any]:
+    return {
+        "status": job.status,
+        "phase": job.phase,
+        "progress": job.progress,
+        "company_name": job.company_name,
+        "generated_data": dict(job.generated_data),
+        "reference_links": dict(job.reference_links),
+        "artifacts": {
+            "doc_ready": bool(job.doc_path and os.path.exists(job.doc_path)),
+            "pdf_ready": bool(job.pdf_path and os.path.exists(job.pdf_path)),
+            "doc_path": job.doc_path,
+            "pdf_path": job.pdf_path,
+        },
+        "error": job.error,
+    }
+
+
 def _credit_job_worker(job: CreditRatingJobState) -> None:
     job.status = "running"
     job.phase = "initializing"
@@ -790,6 +823,7 @@ def _credit_job_worker(job: CreditRatingJobState) -> None:
             job.company_name = data
         if isinstance(data, list) and ("web search queries" in lowered_message or "queries" in lowered_message):
             job.generated_data["web_queries"] = [str(item) for item in data]
+        _apply_credit_synthesis_payload(job, data)
         _append_credit_event(job, "progress", log_entry)
 
     try:
@@ -809,25 +843,34 @@ def _credit_job_worker(job: CreditRatingJobState) -> None:
             _append_credit_event(job, "status", {"message": "Credit rating job cancelled by user."})
         elif result:
             job.company_name = result.get("company_name") or job.company_name
-            job.generated_data = {
-                "agencies": result.get("agencies", job.agencies),
-                "web_queries": result.get("web_queries", []),
-                "comparison_paragraphs": result.get("comparison_paragraphs", []),
-                "comparison_table_markdown": result.get("comparison_table_markdown", ""),
-            }
+            _apply_credit_synthesis_payload(job, result)
+            job.generated_data["agencies"] = result.get("agencies", job.agencies)
+            job.generated_data["web_queries"] = result.get("web_queries", job.generated_data.get("web_queries", []))
             job.reference_links = _build_credit_reference_links(result.get("cited_source_map", {}))
-            job.generated_data["comparison_table_markdown"] = _strip_source_document_table_row(
-                job.generated_data.get("comparison_table_markdown", "")
-            )
-            _write_credit_workspace_artifacts(job)
-            if job.doc_path:
-                _append_credit_event(job, "artifact", {"type": "doc", "path": job.doc_path})
-            if job.pdf_path:
-                _append_credit_event(job, "artifact", {"type": "pdf", "path": job.pdf_path})
-            job.status = "completed"
-            job.phase = "completed"
-            job.progress = 100
-            _append_credit_event(job, "status", {"message": "Credit rating workspace generation completed."})
+            paragraphs = job.generated_data.get("comparison_paragraphs", [])
+            table_markdown = str(job.generated_data.get("comparison_table_markdown", "")).strip()
+            if not paragraphs and not table_markdown:
+                job.status = "failed"
+                job.phase = "error"
+                job.error = "Credit rating synthesis returned no comparison narrative or matrix content."
+                _append_credit_event(job, "error", {"message": job.error})
+            else:
+                _write_credit_workspace_artifacts(job)
+                if job.doc_path:
+                    _append_credit_event(job, "artifact", {"type": "doc", "path": job.doc_path})
+                if job.pdf_path:
+                    _append_credit_event(job, "artifact", {"type": "pdf", "path": job.pdf_path})
+                job.status = "completed"
+                job.phase = "completed"
+                job.progress = 100
+                _append_credit_event(
+                    job,
+                    "status",
+                    {
+                        "message": "Credit rating workspace generation completed.",
+                        **_credit_job_snapshot(job),
+                    },
+                )
         else:
             job.status = "failed"
             job.phase = "error"
@@ -846,7 +889,7 @@ def _credit_job_worker(job: CreditRatingJobState) -> None:
     finally:
         job.completed_at = utc_iso()
         job.updated_at = utc_iso()
-        _append_credit_event(job, "final", {"status": job.status})
+        _append_credit_event(job, "final", {"status": job.status, **_credit_job_snapshot(job)})
 
 
 def _sse_encode(event: Dict[str, Any]) -> str:
@@ -899,8 +942,9 @@ def create_credit_job(payload: CreditRatingJobRequest) -> Dict[str, Any]:
 
 
 @router.get("/credit-rating/jobs/{job_id}")
-def get_credit_job(job_id: str) -> Dict[str, Any]:
-    return credit_store.get(job_id).to_dict()
+def get_credit_job(job_id: str) -> JSONResponse:
+    payload = credit_store.get(job_id).to_dict()
+    return JSONResponse(payload, headers={"Cache-Control": "no-store"})
 
 
 @router.get("/credit-rating/jobs/{job_id}/events")

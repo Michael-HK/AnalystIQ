@@ -38,6 +38,7 @@ from cache_manager import RedisCacheManager
 from llama_index.core.llms import ChatMessage, MessageRole
 from llama_index.llms.openrouter import OpenRouter
 from chart_validator import ChartValidatorAgent, ChartCorrectorAgent
+from ppt_export import extract_chart_specs_from_markdown
 
 
 def _load_environment() -> None:
@@ -117,8 +118,9 @@ class DeckSlideSpec(BaseModel):
     layout_type: str = Field(
         default="two_column",
         description=(
-            "Preferred slide layout type. Expected values: thesis, metrics_dashboard, "
-            "chart_focus, two_column, risk_matrix, or closing_recommendation."
+            "Slide layout template. Preferred Manus-style values: big_stat, three_column_cards, "
+            "text_and_image, chart, hero, thesis, metrics_dashboard, two_column, risk_matrix, "
+            "closing_recommendation."
         ),
     )
     section_label: str = Field(
@@ -129,6 +131,10 @@ class DeckSlideSpec(BaseModel):
         default="",
         description="Primary slide headline focused on decision-relevant insight.",
     )
+    subheading: str = Field(
+        default="",
+        description="Supporting context phrase for chart or text-and-image layouts.",
+    )
     takeaway: str = Field(
         default="",
         description="One-sentence key takeaway for executives.",
@@ -136,6 +142,14 @@ class DeckSlideSpec(BaseModel):
     bullets: List[str] = Field(
         default_factory=list,
         description="Concise supporting bullets for the slide (ideally up to three).",
+    )
+    stat_number: str = Field(
+        default="",
+        description="Hero metric for big_stat slides, e.g. '82%' or '$14K'.",
+    )
+    stat_label: str = Field(
+        default="",
+        description="Supporting label for big_stat slides.",
     )
     metrics: List[DeckMetricCard] = Field(
         default_factory=list,
@@ -148,6 +162,10 @@ class DeckSlideSpec(BaseModel):
     visual_emphasis: str = Field(
         default="",
         description="Short visual direction for renderer emphasis and composition.",
+    )
+    visual_prompt: str = Field(
+        default="",
+        description="Optional visual scene prompt for accent panels (not required for rendering).",
     )
     speaker_notes: str = Field(
         default="",
@@ -463,6 +481,30 @@ Rules:
         return [agency for agency in allowed_order if agency in seen]
 
     @staticmethod
+    def _sanitize_web_results(web_results: Any) -> List[Any]:
+        cleaned: List[Any] = []
+        for item in web_results or []:
+            if isinstance(item, Exception):
+                continue
+            if isinstance(item, (list, dict)):
+                cleaned.append(item)
+        return cleaned
+
+    @staticmethod
+    def _truncate_credit_context(context: str, max_chars: int = 14000) -> str:
+        normalized = (context or "").strip()
+        if len(normalized) <= max_chars:
+            return normalized
+        truncated = normalized[:max_chars].rsplit("\n", 1)[0].strip()
+        return f"{truncated}\n\n[Context truncated for synthesis.]"
+
+    @staticmethod
+    def _credit_synthesis_has_output(synthesis: Dict[str, Any]) -> bool:
+        paragraphs = synthesis.get("comparison_paragraphs") or []
+        table_markdown = str(synthesis.get("comparison_table_markdown", "")).strip()
+        return bool(paragraphs) or bool(table_markdown)
+
+    @staticmethod
     def _credit_period_label(start_year: int, end_year: int) -> str:
         if start_year == end_year:
             return str(start_year)
@@ -673,10 +715,15 @@ Rules:
                 remaining_words = 0
         cleaned_table = self._strip_credit_workspace_source_row(table_markdown)
         cleaned_table = self._enforce_current_rating_first_row(cleaned_table, agencies)
-        return {
+        synthesis_payload = {
             "comparison_paragraphs": bounded_paragraphs,
             "comparison_table_markdown": cleaned_table,
         }
+        if not self._credit_synthesis_has_output(synthesis_payload):
+            raise ValueError(
+                "Credit rating synthesis returned no comparison narrative or matrix content."
+            )
+        return synthesis_payload
 
     @retry(wait=wait_exponential(multiplier=1, min=2, max=60), stop=stop_after_attempt(3))
     async def generate_financial_queries(
@@ -1553,15 +1600,26 @@ Report content:
         if not isinstance(value, dict):
             value = {}
 
-        chart_count = len(re.findall(r"```html\n(.*?)\n```", report_markdown or "", flags=re.DOTALL))
+        chart_count = len(re.findall(r"```html\s*\n(.*?)\n```", report_markdown or "", flags=re.DOTALL))
         allowed_layouts = {
             "hero",
             "thesis",
+            "big_stat",
+            "three_column_cards",
+            "text_and_image",
+            "chart",
             "metrics_dashboard",
             "chart_focus",
             "two_column",
             "risk_matrix",
             "closing_recommendation",
+        }
+        layout_aliases = {
+            "big-stat": "big_stat",
+            "three-column-cards": "three_column_cards",
+            "three_column": "three_column_cards",
+            "text-and-image": "text_and_image",
+            "chart-focus": "chart",
         }
         deck_title = self._deck_plain_text(
             str(value.get("deck_title") or f"{company_name} Investment Committee Deck"),
@@ -1582,15 +1640,20 @@ Report content:
         quant_cards = self._extract_quant_signals_for_deck(report_markdown, max_items=10)
         layout_defaults = [
             "thesis",
-            "metrics_dashboard",
-            "chart_focus",
-            "two_column",
+            "big_stat",
+            "chart",
+            "three_column_cards",
+            "text_and_image",
             "risk_matrix",
             "closing_recommendation",
         ]
         default_labels = {
             "hero": "Context",
             "thesis": "Thesis",
+            "big_stat": "Signal",
+            "three_column_cards": "Drivers",
+            "text_and_image": "Evidence",
+            "chart": "Evidence",
             "metrics_dashboard": "Performance",
             "chart_focus": "Evidence",
             "two_column": "Drivers",
@@ -1600,6 +1663,10 @@ Report content:
         default_emphasis = {
             "hero": "Strong title treatment with clear committee context.",
             "thesis": "Lead with one decision and supporting logic.",
+            "big_stat": "Make one number impossible to ignore.",
+            "three_column_cards": "Split the argument into three crisp pillars.",
+            "text_and_image": "Pair concise bullets with a visual proof point.",
+            "chart": "Use one chart to prove the core argument.",
             "metrics_dashboard": "Highlight momentum, quality, and valuation metrics.",
             "chart_focus": "Use one chart to prove the core argument.",
             "two_column": "Separate catalysts from constraints for comparison.",
@@ -1612,7 +1679,10 @@ Report content:
         for idx, item in enumerate(raw_slides[:9]):
             if not isinstance(item, dict):
                 continue
-            layout_type = str(item.get("layout_type", "")).strip()
+            layout_type = str(item.get("layout_type", "")).strip().lower().replace("-", "_")
+            layout_type = layout_aliases.get(layout_type, layout_type)
+            if layout_type == "chart_focus":
+                layout_type = "chart"
             if layout_type not in allowed_layouts:
                 layout_type = layout_defaults[min(idx, len(layout_defaults) - 1)]
 
@@ -1645,12 +1715,22 @@ Report content:
                 chart_ref = None
             if chart_ref is not None and (chart_ref < 0 or chart_ref >= chart_count):
                 chart_ref = None
-            if chart_ref is None and layout_type == "chart_focus" and chart_count > 0:
+            if chart_ref is None and layout_type in {"chart", "chart_focus"} and chart_count > 0:
                 chart_ref = min(idx, chart_count - 1)
 
             metrics = self._normalize_metric_cards(item.get("metrics"))
             if not metrics and layout_type == "metrics_dashboard":
                 metrics = quant_cards[:4]
+
+            if layout_type == "big_stat" and not str(item.get("stat_number") or "").strip() and quant_cards:
+                item = {
+                    **item,
+                    "stat_number": quant_cards[0]["value"],
+                    "stat_label": item.get("stat_label") or quant_cards[0]["label"],
+                }
+
+            stat_number = self._deck_plain_text(str(item.get("stat_number", "")), max_chars=18)
+            stat_label = self._deck_plain_text(str(item.get("stat_label", "")), max_chars=90)
 
             takeaway = self._truncate_words(str(item.get("takeaway", "")), max_words=18)
             if not takeaway and bullets:
@@ -1664,14 +1744,18 @@ Report content:
                         max_chars=36,
                     ),
                     "headline": headline,
+                    "subheading": self._deck_plain_text(str(item.get("subheading", "")), max_chars=120),
                     "takeaway": takeaway,
                     "bullets": bullets[:3],
+                    "stat_number": stat_number,
+                    "stat_label": stat_label,
                     "metrics": metrics,
                     "chart_ref": chart_ref,
                     "visual_emphasis": self._deck_plain_text(
                         str(item.get("visual_emphasis") or default_emphasis.get(layout_type, "")),
                         max_chars=80,
                     ),
+                    "visual_prompt": self._deck_plain_text(str(item.get("visual_prompt", "")), max_chars=160),
                     "speaker_notes": self._deck_plain_text(
                         str(item.get("speaker_notes", "")),
                         max_chars=240,
@@ -1730,7 +1814,7 @@ Report content:
     ) -> Dict[str, Any]:
         """Create a usable visual deck spec without relying on model output."""
         sections = self._extract_report_sections_for_deck(report_markdown)
-        chart_count = len(re.findall(r"```html\n(.*?)\n```", report_markdown or "", flags=re.DOTALL))
+        chart_count = len(re.findall(r"```html\s*\n(.*?)\n```", report_markdown or "", flags=re.DOTALL))
         clean_points = [self._truncate_words(point, max_words=11) for point in (key_points or []) if point]
         quant_cards = self._extract_quant_signals_for_deck(report_markdown, max_items=4)
         thesis = self._deck_plain_text(executive_summary or (sections[0]["body"] if sections else ""), max_chars=150)
@@ -1739,6 +1823,7 @@ Report content:
             "Execution miss may compress valuation multiples quickly.",
             "Regulatory shifts can disrupt forecast assumptions.",
         ]
+        primary_stat = quant_cards[0] if quant_cards else {"value": "—", "label": "Key metric from report"}
         slides: List[Dict[str, Any]] = [
             {
                 "layout_type": "hero",
@@ -1767,6 +1852,19 @@ Report content:
                 "speaker_notes": "",
             },
             {
+                "layout_type": "big_stat",
+                "section_label": "Signal",
+                "headline": "Most material quantitative signal",
+                "takeaway": "Anchor the committee on one hard number.",
+                "stat_number": primary_stat["value"],
+                "stat_label": primary_stat["label"],
+                "bullets": [],
+                "metrics": [],
+                "chart_ref": None,
+                "visual_emphasis": "Make one number impossible to ignore.",
+                "speaker_notes": "",
+            },
+            {
                 "layout_type": "metrics_dashboard",
                 "section_label": "Performance",
                 "headline": "Operating and valuation scoreboard",
@@ -1785,13 +1883,13 @@ Report content:
 
         for idx, section in enumerate(sections[:2]):
             sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", section["body"]) if s.strip()]
-            # Enforce conciseness for bullets in fallback
             bullets = [self._truncate_words(sentence, max_words=11) for sentence in sentences[:4]]
             slides.append(
                 {
-                    "layout_type": "chart_focus" if idx % 2 == 0 else "two_column",
+                    "layout_type": "chart" if idx % 2 == 0 else "three_column_cards",
                     "section_label": section["title"][:36],
                     "headline": section["title"][:50],
+                    "subheading": self._truncate_words(bullets[0], max_words=18) if bullets else "",
                     "takeaway": self._truncate_words(bullets[0], max_words=18) if bullets else "",
                     "bullets": bullets[1:4] if len(bullets) > 1 else bullets[:3],
                     "metrics": [],
@@ -1873,30 +1971,52 @@ Report content:
         """Generate a Manus-style structured deck spec for visual PPT rendering."""
         key_points_text = "\n".join([f"- {point}" for point in (key_points or [])[:5]])
         report_excerpt = (report_markdown or "")[:14000]
-        chart_count = len(re.findall(r"```html\n(.*?)\n```", report_markdown or "", flags=re.DOTALL))
-        prompt = f"""
-You are a Manus-style presentation design agent for buy-side investment decks.
-Create a structured visual slide spec for an editable PowerPoint renderer.
+        extracted_charts = extract_chart_specs_from_markdown(report_markdown or "")
+        chart_catalog = json.dumps(extracted_charts, indent=2) if extracted_charts else "[]"
+        chart_count = len(extracted_charts)
 
-Design principles:
-- Build a persuasive narrative arc: context -> thesis -> evidence -> risks -> recommendation.
-- Prioritize visual hierarchy and information density suitable for CIO/IC meetings.
-- Use headlines and takeaways, never long prose.
-- Prefer visual layouts: hero, thesis, metrics dashboard, chart focus, two column, risk matrix, closing recommendation.
-- Keep slides sparse and executive-ready with obvious "what matters now" framing.
-- Each slide has max 3 bullets. Each bullet has max 11 words.
-- Each takeaway has max 18 words.
-- Use chart_ref only when a chart is essential. Available chart_ref values are 0 to {max(chart_count - 1, 0)}.
-- If no chart is needed, set chart_ref to null.
-- Do not invent financial numbers. Use metrics only if supported by the report.
-- Always include one closing_recommendation slide as the final slide.
-- Return valid JSON that matches the output model exactly.
+        system_instruction = """
+You are an elite buy-side presentation architect designing Manus-style investment committee decks.
 
-Slide count: 5 to 7 slides, excluding the renderer title slide.
+Your job is to transform a research report into a structured slide specification that a python-pptx renderer can execute with professional layout fidelity.
+
+Narrative arc (mandatory):
+1. Context and thesis framing
+2. One hero quantitative signal (big_stat)
+3. Evidence slides using charts and concise bullets
+4. Risk and mitigation framing
+5. Closing recommendation with explicit committee actions
+
+Layout catalog — choose the best template per slide:
+- thesis: core investment view with 2-3 supporting bullets
+- big_stat: one dominant number (stat_number + stat_label) that anchors conviction
+- three_column_cards: exactly three parallel pillars (bullets only)
+- text_and_image: bullets on the left; pair with chart_ref when visual proof exists
+- chart: one report chart (chart_ref) with subheading insight and 2-3 bullets
+- metrics_dashboard: 2-4 KPI cards in metrics[]
+- risk_matrix: downside risks with mitigation framing
+- closing_recommendation: final slide with committee actions
+
+Design rules:
+- Maximum 9 content slides (title slide is added by renderer).
+- Each slide: max 3 bullets, max 11 words per bullet, max 18 words for takeaway.
+- Headlines must state insight, not section names.
+- Use chart_ref only when the chart materially supports the slide argument.
+- chart_ref must match an index from Charts Available; otherwise set null.
+- For big_stat, stat_number must be a real figure from the report (e.g. "13.9%", "2.6x", "$151B").
+- Do not invent financial numbers.
+- Prefer layout variety; avoid repeating the same layout more than twice.
+- Always end with closing_recommendation.
+""".strip()
+
+        user_prompt = f"""
 Company: {company_name}
 Ticker: {ticker}
 Date: {self.current_date}
-Available charts in report: {chart_count}
+Product: {self.product_name}
+
+Charts Available (Chart.js blocks extracted from report — use chart_ref index to reference):
+{chart_catalog}
 
 Executive summary:
 ---
@@ -1910,11 +2030,19 @@ Report excerpt:
 ---
 {report_excerpt}
 ---
+
+Return valid JSON matching the VisualDeckSpec schema exactly.
+Target 6-8 content slides with varied Manus-style layouts.
+Available chart_ref values: 0 to {max(chart_count - 1, 0)} when charts exist.
 """.strip()
+
         parsed: Any = None
         try:
             structured_llm = self.llm.as_structured_llm(output_cls=VisualDeckSpec)
-            messages = [ChatMessage(role=MessageRole.USER, content=prompt)]
+            messages = [
+                ChatMessage(role=MessageRole.SYSTEM, content=system_instruction),
+                ChatMessage(role=MessageRole.USER, content=user_prompt),
+            ]
             response = await structured_llm.achat(messages)
             if hasattr(response, "raw") and isinstance(response.raw, VisualDeckSpec):
                 parsed = response.raw.model_dump()
@@ -1927,7 +2055,7 @@ Report excerpt:
             parsed = None
 
         if parsed is None:
-            response = await self.llm.acomplete(prompt)
+            response = await self.llm.acomplete(f"{system_instruction}\n\n{user_prompt}")
             parsed = self._parse_deck_json_quietly(response.text)
 
         return self._normalize_visual_deck_spec(
@@ -2491,10 +2619,18 @@ Report excerpt:
             update_progress("🌐 Generated web search queries", web_queries)
             _cache(web_queries=web_queries)
 
-        cached_web_results = list(cache.get("web_results") or [])
-        if cached_web_results:
+        cached_context = str(cache.get("context") or "").strip()
+        cached_web_results = self._sanitize_web_results(cache.get("web_results"))
+        if cached_context:
+            update_progress("📊 Using cached research context")
+            self._restore_source_map_from_cache(cache.get("source_map"))
+            context = self._truncate_credit_context(cached_context)
+        elif cached_web_results:
             update_progress("📊 Using cached web research results")
-            context = self._format_context(cached_web_results, [], [])
+            self._restore_source_map_from_cache(cache.get("source_map"))
+            context = self._truncate_credit_context(
+                self._format_context(cached_web_results, [], [])
+            )
             source_map_payload = {
                 str(idx): value
                 for idx, value in self.source_map.items()
@@ -2504,12 +2640,16 @@ Report excerpt:
         else:
             ensure_not_cancelled()
             update_progress("🔄 Gathering web evidence...")
-            web_results = await parallel_search(self.web_search_tool, web_queries)
+            web_results = self._sanitize_web_results(
+                await parallel_search(self.web_search_tool, web_queries)
+            )
             update_progress("📥 Web evidence gathered.")
 
             ensure_not_cancelled()
             update_progress("📝 Consolidating evidence context...")
-            context = self._format_context(web_results, [], [])
+            context = self._truncate_credit_context(
+                self._format_context(web_results, [], [])
+            )
             source_map_payload = {
                 str(idx): value
                 for idx, value in self.source_map.items()
@@ -2521,6 +2661,11 @@ Report excerpt:
                 source_map=source_map_payload,
             )
 
+        if not context.strip():
+            raise ValueError(
+                "No usable research context was available for credit rating synthesis."
+            )
+
         ensure_not_cancelled()
         update_progress("🧠 Generating agency comparison narrative and matrix...")
         synthesis = await self.generate_credit_rating_workspace_output(
@@ -2530,6 +2675,13 @@ Report excerpt:
             context=context,
             start_year=focus_start_year,
             end_year=focus_end_year,
+        )
+        update_progress(
+            "✅ Credit rating workspace synthesis complete.",
+            {
+                "comparison_paragraphs": synthesis.get("comparison_paragraphs", []),
+                "comparison_table_markdown": synthesis.get("comparison_table_markdown", ""),
+            },
         )
 
         combined_text = "\n\n".join(
@@ -2551,7 +2703,6 @@ Report excerpt:
             cited_source_map=cited_source_map,
             source_map=source_map_payload,
         )
-        update_progress("✅ Credit rating workspace synthesis complete.")
 
         return {
             "ticker": ticker,

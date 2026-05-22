@@ -49,7 +49,13 @@ export function CreditRatingWorkspace() {
     const unsubscribe = subscribeToCreditRatingJobEvents(
       job.job_id,
       (log) => setLogs((prev) => [...prev, log]),
-      (evtError) => setError(evtError.message)
+      (evtError) => setError(evtError.message),
+      (latest) => {
+        setJob(latest);
+        if (latest.status === "failed" && latest.error) {
+          setError(latest.error);
+        }
+      }
     );
 
     const interval = setInterval(async () => {
