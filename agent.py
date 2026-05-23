@@ -20,6 +20,7 @@ from prompts import (
     GENERATE_CREDIT_WEB_QUERIES_PROMPT,
     GENERATE_CREDIT_RATING_WORKSPACE_QUERIES_PROMPT,
     GENERATE_CREDIT_RATING_WORKSPACE_SYNTHESIS_PROMPT,
+    GENERATE_CREDIT_RATING_WORKSPACE_SYNTHESIS_CORRECTION_PROMPT,
     GENERATE_FINANCIAL_QUERIES_PROMPT,
     GENERATE_OPENING_SECTION_PROMPT,
     GENERATE_CREDIT_OPENING_SECTION_PROMPT,
@@ -612,8 +613,7 @@ Rules:
 
         column_count = len(header_cells)
         if current_rating_row is None:
-            placeholder_cells = ["Not available in context"] * max(column_count - 1, len(agencies))
-            current_rating_row = ["Current Rating", *placeholder_cells[: max(column_count - 1, 1)]]
+            current_rating_row = ["Current Rating", *([""] * max(column_count - 1, len(agencies)))]
         elif current_rating_row[0].strip().lower() != "current rating":
             current_rating_row[0] = "Current Rating"
 
@@ -638,6 +638,254 @@ Rules:
             rebuilt.append("| " + " | ".join(["---"] * column_count) + " |")
         rebuilt.extend(_format_row(row) for row in normalized_rows)
         return "\n".join(rebuilt).strip()
+
+    _CREDIT_MATRIX_PLACEHOLDER_PATTERNS = (
+        r"\bnot available\b",
+        r"\bno context\b",
+        r"\bno information\b",
+        r"\bnot found in context\b",
+        r"\bnot disclosed\b",
+        r"\bunavailable\b",
+        r"\binsufficient\b",
+        r"\bno data\b",
+        r"\bunknown\b",
+        r"\bnot provided\b",
+        r"\bn/a\b",
+        r"\bna\b",
+    )
+
+    @classmethod
+    def _credit_matrix_cell_is_placeholder(cls, cell: str) -> bool:
+        stripped = re.sub(r"\[\d+(?:\s*,\s*\d+)*\]", "", cell or "").strip()
+        if not stripped:
+            return True
+        normalized = re.sub(r"[^a-z0-9 /+-]", " ", stripped.lower())
+        normalized = re.sub(r"\s+", " ", normalized).strip()
+        if not normalized:
+            return True
+        return any(re.search(pattern, normalized) for pattern in cls._CREDIT_MATRIX_PLACEHOLDER_PATTERNS)
+
+    @classmethod
+    def _credit_matrix_cell_has_citation(cls, cell: str) -> bool:
+        return bool(re.search(r"\[\d+\]", cell or ""))
+
+    def _parse_credit_matrix_markdown(self, table_markdown: str) -> Dict[str, Any]:
+        lines = [
+            line.strip()
+            for line in (table_markdown or "").splitlines()
+            if line.strip() and "|" in line
+        ]
+        if len(lines) < 2:
+            return {"headers": [], "rows": []}
+
+        headers = self._parse_markdown_table_row(lines[0])
+        rows: List[Dict[str, Any]] = []
+        for line in lines[1:]:
+            if self._is_markdown_table_separator(line):
+                continue
+            cells = self._parse_markdown_table_row(line)
+            if not cells:
+                continue
+            metric = cells[0].strip()
+            if "source document" in metric.lower():
+                continue
+            rows.append({"metric": metric, "cells": cells[1:]})
+        return {"headers": headers, "rows": rows}
+
+    def _run_deterministic_credit_matrix_checks(
+        self,
+        table_markdown: str,
+        agencies: List[str],
+    ) -> SectionGenerationEvaluationResult:
+        violations: List[SectionViolation] = []
+        parsed = self._parse_credit_matrix_markdown(table_markdown)
+        headers = parsed.get("headers") or []
+        rows = parsed.get("rows") or []
+
+        if len(headers) < 2 or not rows:
+            violations.append(
+                SectionViolation(
+                    violation_type="MATRIX_MISSING_OR_MALFORMED",
+                    evidence="Comparison matrix is missing headers or body rows.",
+                    fix_instruction=(
+                        "Return a valid markdown table with agency columns and at least a Current Rating row."
+                    ),
+                )
+            )
+            return SectionGenerationEvaluationResult(
+                has_violations=True,
+                violations=violations,
+                regeneration_feedback=" ".join(v.fix_instruction for v in violations),
+                evaluator_summary="Matrix structure is incomplete.",
+            )
+
+        first_metric = re.sub(r"[^a-z0-9 ]", "", str(rows[0].get("metric", "")).lower()).strip()
+        if first_metric != "current rating":
+            violations.append(
+                SectionViolation(
+                    violation_type="CURRENT_RATING_NOT_FIRST",
+                    evidence=f"First row metric is '{rows[0].get('metric', '')}'.",
+                    fix_instruction='Make "Current Rating" the first matrix row.',
+                )
+            )
+
+        expected_agency_cols = max(len(headers) - 1, len(agencies))
+        for row in rows:
+            metric = str(row.get("metric", "")).strip()
+            cells = list(row.get("cells") or [])
+            while len(cells) < expected_agency_cols:
+                cells.append("")
+            cells = cells[:expected_agency_cols]
+
+            for idx, cell in enumerate(cells):
+                agency_label = headers[idx + 1] if idx + 1 < len(headers) else f"Agency {idx + 1}"
+                if self._credit_matrix_cell_is_placeholder(cell):
+                    violations.append(
+                        SectionViolation(
+                            violation_type="MATRIX_PLACEHOLDER_CELL",
+                            evidence=f"{metric} / {agency_label}: '{cell[:120]}'",
+                            fix_instruction=(
+                                f"Remove the '{metric}' row or replace the {agency_label} cell with "
+                                "substantive, citation-backed content from context. Do not use placeholder text."
+                            ),
+                        )
+                    )
+                elif not self._credit_matrix_cell_has_citation(cell):
+                    violations.append(
+                        SectionViolation(
+                            violation_type="MATRIX_MISSING_CITATION",
+                            evidence=f"{metric} / {agency_label}: '{cell[:120]}'",
+                            fix_instruction=(
+                                f"Add at least one [n] citation marker to the {agency_label} cell in row '{metric}'."
+                            ),
+                        )
+                    )
+
+        if violations:
+            feedback = " ".join(v.fix_instruction for v in violations[:6])
+            return SectionGenerationEvaluationResult(
+                has_violations=True,
+                violations=violations,
+                regeneration_feedback=feedback.strip(),
+                evaluator_summary="Matrix contains placeholder, missing, or non-comparable cells.",
+            )
+
+        return SectionGenerationEvaluationResult(
+            has_violations=False,
+            violations=[],
+            regeneration_feedback="",
+            evaluator_summary="Matrix passed deterministic comparability checks.",
+        )
+
+    async def _evaluate_credit_rating_matrix(
+        self,
+        table_markdown: str,
+        agencies: List[str],
+    ) -> SectionGenerationEvaluationResult:
+        deterministic = self._run_deterministic_credit_matrix_checks(table_markdown, agencies)
+        if deterministic.has_violations:
+            return deterministic
+
+        eval_prompt = f"""
+You are a strict evaluator for a credit rating comparison matrix.
+Return structured evaluation fields only.
+
+Reject the matrix if ANY of the following are true:
+1) A row uses placeholder/no-context language (e.g., not available, no context, N/A, unknown, blank).
+2) A non-Current-Rating row is included without comparable citation-backed content for all agency columns.
+3) "Current Rating" is not the first row.
+4) Cells lack citation markers [n] despite making factual claims.
+
+Selected agencies: {", ".join(agencies)}
+
+Matrix markdown:
+---
+{table_markdown[:12000]}
+---
+"""
+        try:
+            structured_llm = self.llm.as_structured_llm(output_cls=SectionGenerationEvaluationResult)
+            messages = [ChatMessage(role=MessageRole.USER, content=eval_prompt)]
+            response = await structured_llm.achat(messages)
+            if hasattr(response, "raw") and isinstance(response.raw, SectionGenerationEvaluationResult):
+                return response.raw
+            if hasattr(response, "message") and getattr(response.message, "content", None):
+                parsed = self._parse_llm_json_output(response.message.content)
+                if isinstance(parsed, dict):
+                    return SectionGenerationEvaluationResult.model_validate(parsed)
+        except Exception:
+            pass
+
+        return SectionGenerationEvaluationResult(
+            has_violations=False,
+            violations=[],
+            regeneration_feedback="",
+            evaluator_summary="Matrix passed evaluator checks.",
+        )
+
+    def _prune_noncomparable_matrix_rows(self, table_markdown: str) -> str:
+        parsed = self._parse_credit_matrix_markdown(table_markdown)
+        headers = parsed.get("headers") or []
+        rows = parsed.get("rows") or []
+        if not headers or not rows:
+            return table_markdown
+
+        kept_rows: List[List[str]] = []
+        for row in rows:
+            metric = str(row.get("metric", "")).strip()
+            cells = list(row.get("cells") or [])
+            is_current_rating = (
+                re.sub(r"[^a-z0-9 ]", "", metric.lower()).strip() == "current rating"
+            )
+            if is_current_rating:
+                kept_rows.append([metric, *cells])
+                continue
+            if cells and all(not self._credit_matrix_cell_is_placeholder(cell) for cell in cells):
+                kept_rows.append([metric, *cells])
+
+        def _format_row(cells: List[str]) -> str:
+            return "| " + " | ".join(cells) + " |"
+
+        column_count = len(headers)
+        rebuilt = [_format_row(headers)]
+        rebuilt.append("| " + " | ".join(["---"] * column_count) + " |")
+        for row in kept_rows:
+            padded = row[:]
+            while len(padded) < column_count:
+                padded.append("")
+            rebuilt.append(_format_row(padded[:column_count]))
+        return "\n".join(rebuilt).strip()
+
+    def _normalize_credit_synthesis_payload(
+        self,
+        parsed: Dict[str, Any],
+        agencies: List[str],
+    ) -> Dict[str, Any]:
+        paragraphs = parsed.get("comparison_paragraphs")
+        table_markdown = str(parsed.get("comparison_table_markdown", "")).strip()
+        if not isinstance(paragraphs, list):
+            paragraphs = []
+        clean_paragraphs = [str(item).strip() for item in paragraphs if str(item).strip()]
+        bounded_paragraphs: List[str] = []
+        remaining_words = 250
+        for paragraph in clean_paragraphs[:4]:
+            if remaining_words <= 0:
+                break
+            words = paragraph.split()
+            if len(words) <= remaining_words:
+                bounded_paragraphs.append(paragraph)
+                remaining_words -= len(words)
+            else:
+                truncated = " ".join(words[:remaining_words]).strip()
+                if truncated:
+                    bounded_paragraphs.append(f"{truncated}...")
+                remaining_words = 0
+        cleaned_table = self._strip_credit_workspace_source_row(table_markdown)
+        cleaned_table = self._enforce_current_rating_first_row(cleaned_table, agencies)
+        return {
+            "comparison_paragraphs": bounded_paragraphs,
+            "comparison_table_markdown": cleaned_table,
+        }
 
     @retry(wait=wait_exponential(multiplier=1, min=2, max=60), stop=stop_after_attempt(3))
     async def generate_credit_rating_workspace_queries(
@@ -675,55 +923,108 @@ Rules:
         context: str,
         start_year: int,
         end_year: int,
+        progress_callback: Optional[ProgressCallback] = None,
     ) -> Dict[str, Any]:
         period_label = self._credit_period_label(start_year, end_year)
-        prompt = GENERATE_CREDIT_RATING_WORKSPACE_SYNTHESIS_PROMPT.format(
-            company_name=company_name,
-            ticker=ticker,
-            agencies=", ".join(agencies),
-            period_label=period_label,
-            start_year=start_year,
-            end_year=end_year,
-            current_date=self.current_date,
-            context=context,
-        )
-        response = await self.llm.acomplete(prompt)
-        parsed = self._parse_llm_json_output(response.text)
-        if not isinstance(parsed, dict):
-            parsed = self._parse_llm_python_output(response.text)
-            if not isinstance(parsed, dict):
-                parsed = {}
-
-        paragraphs = parsed.get("comparison_paragraphs")
-        table_markdown = str(parsed.get("comparison_table_markdown", "")).strip()
-        if not isinstance(paragraphs, list):
-            paragraphs = []
-        clean_paragraphs = [str(item).strip() for item in paragraphs if str(item).strip()]
-        bounded_paragraphs: List[str] = []
-        remaining_words = 250
-        for paragraph in clean_paragraphs[:4]:
-            if remaining_words <= 0:
-                break
-            words = paragraph.split()
-            if len(words) <= remaining_words:
-                bounded_paragraphs.append(paragraph)
-                remaining_words -= len(words)
-            else:
-                truncated = " ".join(words[:remaining_words]).strip()
-                if truncated:
-                    bounded_paragraphs.append(f"{truncated}...")
-                remaining_words = 0
-        cleaned_table = self._strip_credit_workspace_source_row(table_markdown)
-        cleaned_table = self._enforce_current_rating_first_row(cleaned_table, agencies)
-        synthesis_payload = {
-            "comparison_paragraphs": bounded_paragraphs,
-            "comparison_table_markdown": cleaned_table,
+        max_attempts = 3
+        evaluator_feedback: Optional[str] = None
+        previous_draft: Optional[str] = None
+        latest_payload: Dict[str, Any] = {
+            "comparison_paragraphs": [],
+            "comparison_table_markdown": "",
         }
-        if not self._credit_synthesis_has_output(synthesis_payload):
+
+        for attempt in range(1, max_attempts + 1):
+            correction_block = ""
+            if attempt > 1:
+                correction_block = GENERATE_CREDIT_RATING_WORKSPACE_SYNTHESIS_CORRECTION_PROMPT.format(
+                    evaluator_feedback=(
+                        evaluator_feedback
+                        or "Remove placeholder cells and keep only comparable citation-backed matrix rows."
+                    ),
+                    previous_draft=(previous_draft or "")[:12000],
+                )
+
+            prompt = GENERATE_CREDIT_RATING_WORKSPACE_SYNTHESIS_PROMPT.format(
+                company_name=company_name,
+                ticker=ticker,
+                agencies=", ".join(agencies),
+                period_label=period_label,
+                start_year=start_year,
+                end_year=end_year,
+                current_date=self.current_date,
+                context=context,
+                correction_block=correction_block,
+            )
+            response = await self.llm.acomplete(prompt)
+            parsed = self._parse_llm_json_output(response.text)
+            if not isinstance(parsed, dict):
+                parsed = self._parse_llm_python_output(response.text)
+                if not isinstance(parsed, dict):
+                    parsed = {}
+
+            latest_payload = self._normalize_credit_synthesis_payload(parsed, agencies)
+            evaluation = await self._evaluate_credit_rating_matrix(
+                latest_payload.get("comparison_table_markdown", ""),
+                agencies,
+            )
+
+            if not evaluation.has_violations:
+                if attempt > 1 and progress_callback:
+                    progress_callback(
+                        {
+                            "message": f"✅ Credit matrix passed quality check on attempt {attempt}/{max_attempts}.",
+                            "data": None,
+                        }
+                    )
+                break
+
+            if attempt == max_attempts:
+                pruned_table = self._prune_noncomparable_matrix_rows(
+                    latest_payload.get("comparison_table_markdown", "")
+                )
+                latest_payload["comparison_table_markdown"] = pruned_table
+                final_eval = await self._evaluate_credit_rating_matrix(pruned_table, agencies)
+                if progress_callback:
+                    progress_callback(
+                        {
+                            "message": (
+                                "⚠️ Credit matrix still has comparability issues after retries; using best-effort draft."
+                                if final_eval.has_violations
+                                else f"✅ Credit matrix recovered after pruning on attempt {attempt}/{max_attempts}."
+                            ),
+                            "data": final_eval.evaluator_summary,
+                        }
+                    )
+                break
+
+            evaluator_feedback = (
+                evaluation.regeneration_feedback
+                or "Remove placeholder/no-context matrix cells and keep only comparable citation-backed rows."
+            )
+            previous_draft = json.dumps(
+                {
+                    "comparison_paragraphs": latest_payload.get("comparison_paragraphs", []),
+                    "comparison_table_markdown": latest_payload.get("comparison_table_markdown", ""),
+                },
+                ensure_ascii=False,
+            )
+            if progress_callback:
+                progress_callback(
+                    {
+                        "message": (
+                            f"♻️ Credit matrix failed comparability check; "
+                            f"retrying synthesis attempt {attempt + 1}/{max_attempts}."
+                        ),
+                        "data": evaluator_feedback[:300],
+                    }
+                )
+
+        if not self._credit_synthesis_has_output(latest_payload):
             raise ValueError(
                 "Credit rating synthesis returned no comparison narrative or matrix content."
             )
-        return synthesis_payload
+        return latest_payload
 
     @retry(wait=wait_exponential(multiplier=1, min=2, max=60), stop=stop_after_attempt(3))
     async def generate_financial_queries(
@@ -2675,6 +2976,7 @@ Available chart_ref values: 0 to {max(chart_count - 1, 0)} when charts exist.
             context=context,
             start_year=focus_start_year,
             end_year=focus_end_year,
+            progress_callback=progress_callback,
         )
         update_progress(
             "✅ Credit rating workspace synthesis complete.",

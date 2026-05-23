@@ -165,15 +165,35 @@ Output requirements:
 - comparison_table_markdown:
   - A markdown table with first column named "Metric / Dimension".
   - Include one column per selected agency (column headers must match agency names exactly).
-  - The FIRST row MUST be "Current Rating" (exact label). Populate each agency cell with the latest rating grade and outlook if available (e.g., "A- / Stable [2]").
-  - After Current Rating, add 3 to 8 additional comparison rows that YOU formulate from the evidence — do not use a fixed template.
-    Choose dimensions that best differentiate agencies for this issuer and period (e.g., rating action date, outlook rationale, leverage/liquidity signal, refinancing risk, ESG/governance flag, sector headwind) only when supported by context.
-  - Omit a dimension entirely if evidence is insufficient for all agencies; do not invent rows to fill a checklist.
+  - The FIRST row MUST be "Current Rating" (exact label). Populate each agency cell with the latest rating grade and outlook when supported by context (e.g., "A- / Stable [2]").
+  - After Current Rating, add 2 to 6 additional comparison rows chosen ONLY from evidence in the research context.
+  - Include a dimension row ONLY when every selected agency column can be filled with substantive, citation-backed content for that dimension.
+  - Do NOT add rows where one or more agency cells would require placeholders such as "not available", "no context", "N/A", "unknown", or empty filler text.
+  - Do NOT invent facts or dimensions to fill the table; fewer high-quality rows are better than padded rows.
+  - Every populated agency cell must include at least one citation marker [n] tied to the provided sources.
   - Do NOT include a Source Document row (citations are inline in cells).
   - Keep table cells concise and citation-backed where facts are used.
 
 Research context:
 {context}
+{correction_block}
+""")
+
+GENERATE_CREDIT_RATING_WORKSPACE_SYNTHESIS_CORRECTION_PROMPT = PromptTemplate("""
+Mandatory correction pass for the credit rating comparison matrix.
+
+The previous draft violated matrix quality rules:
+{evaluator_feedback}
+
+Regenerate the FULL JSON output (both comparison_paragraphs and comparison_table_markdown) and apply these fixes:
+- Keep "Current Rating" as the first matrix row.
+- Remove any matrix rows where an agency column lacks substantive, citation-backed content.
+- Replace placeholder/no-context language in any cell (e.g., "not available", "no context", "N/A", "unknown", blank cells).
+- Use only dimensions that are directly supported by the research context for the selected agencies and period.
+- Preserve valid citation markers [n] and do not invent sources.
+
+Previous failed draft:
+{previous_draft}
 """)
 
 # 3. Prompt to generate date-aware financial data sub-queries
